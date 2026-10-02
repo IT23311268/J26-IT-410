@@ -9,7 +9,13 @@ Endpoints:
   GET  /papers                           list all ingested paper_ids
 
 Run locally:
-    uvicorn api.main:app --reload --port 8000
+    uvicorn api.main:app --reload --port 8000 \
+        --reload-dir api --reload-dir ingestion --reload-dir schema
+
+The --reload-dir flags matter. A bare --reload watches the whole repo,
+including data/processed/ — so every ingest wrote page images into the
+watched tree and restarted the server mid-request. Watching only the code
+directories keeps the reloader useful without it reacting to our output.
 
 Then open http://127.0.0.1:8000/docs for the interactive Swagger UI —
 Members 2/3/4 can try real requests there without writing any client code.
@@ -83,12 +89,21 @@ async def ingest(
     return result
 
 
-@app.get("/paper/{paper_id}", response_model=IngestionResult)
-def get_paper(paper_id: str) -> IngestionResult:
-    result = storage.load(paper_id)
+def _load_or_404(paper_id: str) -> IngestionResult:
+    """Shared lookup: 404 when never ingested, 500 with an actionable
+    message when the record on disk is damaged."""
+    try:
+        result = storage.load(paper_id)
+    except storage.CorruptRecord as exc:
+        raise HTTPException(status_code=500, detail=str(exc)) from exc
     if result is None:
         raise HTTPException(status_code=404, detail=f"No ingested paper with id '{paper_id}'")
     return result
+
+
+@app.get("/paper/{paper_id}", response_model=IngestionResult)
+def get_paper(paper_id: str) -> IngestionResult:
+    return _load_or_404(paper_id)
 
 
 @app.get(
@@ -99,9 +114,7 @@ def get_paper(paper_id: str) -> IngestionResult:
 def get_page_image(paper_id: str, page_index: int) -> FileResponse:
     """The rendered bitmap of one page — open this in a browser to see
     exactly what the layout detector (Box 3) will be looking at."""
-    result = storage.load(paper_id)
-    if result is None:
-        raise HTTPException(status_code=404, detail=f"No ingested paper with id '{paper_id}'")
+    result = _load_or_404(paper_id)
 
     page = next((p for p in result.pages if p.page_index == page_index), None)
     if page is None:

@@ -47,8 +47,19 @@ pytest -v
 ## Run the API locally
 
 ```bash
-uvicorn api.main:app --reload --port 8000
+uvicorn api.main:app --reload --port 8000 \
+  --reload-dir api --reload-dir ingestion --reload-dir schema
 ```
+
+On Windows, as one line:
+
+```
+python -m uvicorn api.main:app --reload --port 8000 --reload-dir api --reload-dir ingestion --reload-dir schema
+```
+
+The `--reload-dir` flags are not optional. A bare `--reload` watches the
+whole repo including `data/processed/`, so every ingest writes page
+images into the watched tree and restarts the server mid-request.
 
 Open **http://127.0.0.1:8000/docs** — interactive Swagger UI. Try
 `POST /ingest` with any PDF (or generate one first, see below).

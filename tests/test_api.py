@@ -102,3 +102,24 @@ def test_ingest_rejects_non_pdf():
 def test_fetch_unknown_paper_is_404():
     resp = client.get("/paper/does-not-exist")
     assert resp.status_code == 404
+
+
+def test_corrupt_record_gives_an_actionable_message_not_a_bare_500(
+    tmp_path: Path, monkeypatch
+):
+    """A zero-byte record used to surface as an opaque pydantic traceback.
+    It must now come back as a message that says what to do."""
+    from api import storage
+
+    processed = tmp_path / "processed"
+    processed.mkdir(parents=True)
+    monkeypatch.setattr(storage, "PROCESSED_DIR", processed)
+    (processed / "damaged.json").write_text("", encoding="utf-8")
+
+    resp = client.get("/paper/damaged")
+    assert resp.status_code == 500
+    assert "Re-ingest" in resp.json()["detail"]
+
+    page_resp = client.get("/paper/damaged/page/0")
+    assert page_resp.status_code == 500
+    assert "Re-ingest" in page_resp.json()["detail"]
