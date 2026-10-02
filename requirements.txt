@@ -1,0 +1,23 @@
+# J26-IT-410 — Member 1 ingestion engine
+# Install: pip install -r requirements.txt
+
+# --- Week 1: API + baseline extraction ---
+fastapi>=0.115
+uvicorn[standard]>=0.30
+python-multipart>=0.0.9
+pymupdf>=1.24
+pydantic>=2.7
+
+# --- Testing ---
+pytest>=8.0
+httpx>=0.27          # required by FastAPI's TestClient
+reportlab>=4.0,<5    # synthetic test PDFs. Pinned <5: reportlab 5.x ships
+                     # source-only (no prebuilt wheels), which needs a C
+                     # compiler on Windows. 4.x is a pure-Python wheel.
+
+# --- Week 2+ (uncomment as the layout-aware pipeline is built) ---
+# torch
+# transformers
+# colpali-engine
+# qdrant-client
+# sentence-transformers   # intfloat/multilingual-e5-base

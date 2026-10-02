@@ -1,0 +1,72 @@
+{
+  "schema_version": "1.0.0",
+  "paper": {
+    "paper_id": "demo-0001",
+    "source_filename": "demo-0001.pdf",
+    "title": "A Demonstration Paper for Schema Purposes",
+    "page_count": 6,
+    "extraction_method": "pymupdf_flat_baseline",
+    "ingested_at": "2026-09-28T03:49:30.971319Z"
+  },
+  "chunks": [
+    {
+      "chunk_id": "demo-0001::chunk::0",
+      "paper_id": "demo-0001",
+      "section": "abstract",
+      "section_title_raw": "Abstract",
+      "text": "This paper demonstrates the locked v1 ingestion schema used across J26-IT-410.",
+      "page_start": 0,
+      "page_end": 0,
+      "bbox": {
+        "page": 0,
+        "x0": 72.0,
+        "y0": 650.0,
+        "x1": 540.0,
+        "y1": 700.0
+      },
+      "order_index": 0,
+      "token_count": 14,
+      "artifact_ids": []
+    },
+    {
+      "chunk_id": "demo-0001::chunk::1",
+      "paper_id": "demo-0001",
+      "section": "method",
+      "section_title_raw": "2. Method",
+      "text": "Figure 1 shows the pipeline used to produce this schema.",
+      "page_start": 1,
+      "page_end": 1,
+      "bbox": {
+        "page": 1,
+        "x0": 72.0,
+        "y0": 400.0,
+        "x1": 540.0,
+        "y1": 430.0
+      },
+      "order_index": 1,
+      "token_count": 10,
+      "artifact_ids": [
+        "demo-0001::artifact::0"
+      ]
+    }
+  ],
+  "artifacts": [
+    {
+      "artifact_id": "demo-0001::artifact::0",
+      "paper_id": "demo-0001",
+      "artifact_type": "figure",
+      "caption": "Figure 1: Pipeline overview.",
+      "bbox": {
+        "page": 1,
+        "x0": 100.0,
+        "y0": 200.0,
+        "x1": 480.0,
+        "y1": 390.0
+      },
+      "image_path": "artifacts/demo-0001/fig_00.png",
+      "linked_chunk_ids": [
+        "demo-0001::chunk::1"
+      ]
+    }
+  ]
+}
