@@ -43,6 +43,57 @@ def test_ingest_then_fetch(tmp_path: Path, monkeypatch):
     assert paper_id in list_resp.json()["paper_ids"]
 
 
+def test_ingest_rasterises_pages_and_serves_them(tmp_path: Path, monkeypatch):
+    from api import storage
+
+    monkeypatch.setattr(storage, "PROCESSED_DIR", tmp_path / "processed")
+
+    from scripts.generate_sample_pdf import build_sample_pdf
+
+    pdf_path = tmp_path / "sample.pdf"
+    build_sample_pdf(pdf_path)
+
+    with pdf_path.open("rb") as f:
+        resp = client.post("/ingest", files={"file": ("sample.pdf", f, "application/pdf")})
+    assert resp.status_code == 200, resp.text
+    body = resp.json()
+
+    assert len(body["pages"]) == 3
+    assert [p["page_index"] for p in body["pages"]] == [0, 1, 2]
+
+    paper_id = body["paper"]["paper_id"]
+
+    img = client.get(f"/paper/{paper_id}/page/1")
+    assert img.status_code == 200, img.text
+    assert img.headers["content-type"] == "image/png"
+    assert img.content[:8] == b"\x89PNG\r\n\x1a\n"
+
+    missing = client.get(f"/paper/{paper_id}/page/99")
+    assert missing.status_code == 404
+
+
+def test_ingest_can_skip_rasterisation(tmp_path: Path, monkeypatch):
+    """Text-only mode stays available — it is the cheap path for the
+    baseline-vs-layout-aware evaluation run."""
+    from api import storage
+
+    monkeypatch.setattr(storage, "PROCESSED_DIR", tmp_path / "processed")
+
+    from scripts.generate_sample_pdf import build_sample_pdf
+
+    pdf_path = tmp_path / "sample.pdf"
+    build_sample_pdf(pdf_path)
+
+    with pdf_path.open("rb") as f:
+        resp = client.post(
+            "/ingest",
+            files={"file": ("sample.pdf", f, "application/pdf")},
+            params={"rasterise": "false"},
+        )
+    assert resp.status_code == 200, resp.text
+    assert resp.json()["pages"] == []
+
+
 def test_ingest_rejects_non_pdf():
     resp = client.post("/ingest", files={"file": ("notes.txt", b"hello", "text/plain")})
     assert resp.status_code == 400

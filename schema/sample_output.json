@@ -1,12 +1,12 @@
 {
-  "schema_version": "1.0.0",
+  "schema_version": "1.1.0",
   "paper": {
     "paper_id": "demo-0001",
     "source_filename": "demo-0001.pdf",
     "title": "A Demonstration Paper for Schema Purposes",
     "page_count": 6,
     "extraction_method": "pymupdf_flat_baseline",
-    "ingested_at": "2026-09-28T03:49:30.971319Z"
+    "ingested_at": "2026-10-02T22:36:22.198946Z"
   },
   "chunks": [
     {
@@ -68,5 +68,6 @@
         "demo-0001::chunk::1"
       ]
     }
-  ]
+  ],
+  "pages": []
 }

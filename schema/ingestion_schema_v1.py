@@ -22,7 +22,11 @@ from typing import Optional
 
 from pydantic import BaseModel, Field
 
-SCHEMA_VERSION = "1.0.0"
+SCHEMA_VERSION = "1.1.0"
+# Changelog
+#   1.0.0  initial contract (paper, chunks, artifacts)
+#   1.1.0  added PageImage + IngestionResult.pages (additive — 1.0.0
+#          readers keep working, the new field just defaults to [])
 
 
 class SectionType(str, Enum):
@@ -94,6 +98,37 @@ class Artifact(BaseModel):
     linked_chunk_ids: list[str] = Field(default_factory=list)
 
 
+class PageImage(BaseModel):
+    """A rendered bitmap of one PDF page — pipeline Box 2.
+
+    Layout region detection (Box 3), figure cropping (Box 6) and the
+    ColPali visual retriever (Box 8) all reason over pixels, not PDF
+    drawing operators. So each page is rasterised once, here, and every
+    later stage reuses the same image instead of re-rendering.
+    """
+
+    page_index: int = Field(..., ge=0, description="0-indexed page number")
+    image_path: str = Field(
+        ...,
+        description="Path relative to data/processed/, e.g. '{paper_id}/pages/page_0000.png'",
+    )
+    width_px: int = Field(..., gt=0)
+    height_px: int = Field(..., gt=0)
+    dpi: int = Field(..., gt=0, description="Render resolution used for this page")
+
+    @property
+    def scale(self) -> float:
+        """Pixels per PDF point, i.e. dpi / 72.
+
+        Use this for every conversion between the two coordinate spaces
+        instead of hard-coding the factor. A detector that returns pixel
+        boxes converts back to BoundingBox points by dividing by `scale`;
+        going the other way, multiply. Getting this backwards is the
+        easiest way to misplace every figure crop in the paper.
+        """
+        return self.dpi / 72.0
+
+
 class ExtractionMethod(str, Enum):
     """How this paper was parsed. Lets the eval script separate baseline
     runs from the real layout-aware pipeline in the same output format."""
@@ -119,6 +154,11 @@ class IngestionResult(BaseModel):
     paper: PaperMeta
     chunks: list[Chunk]
     artifacts: list[Artifact] = Field(default_factory=list)
+    pages: list[PageImage] = Field(
+        default_factory=list,
+        description="Rendered page bitmaps, in page order. Empty on a "
+        "text-only baseline run — downstream code must tolerate that.",
+    )
 
 
 # ---------------------------------------------------------------------------

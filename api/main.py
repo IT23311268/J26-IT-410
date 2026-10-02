@@ -1,11 +1,12 @@
 """
 FastAPI app — Member 1 ingestion service.
 
-Endpoints (Week 1 scope):
-  GET  /health              liveness check
-  POST /ingest               upload a PDF -> runs the baseline extractor -> saves + returns IngestionResult
-  GET  /paper/{paper_id}     fetch a previously ingested paper's IngestionResult
-  GET  /papers                list all ingested paper_ids
+Endpoints:
+  GET  /health                           liveness check
+  POST /ingest                           upload a PDF -> baseline extract + rasterise -> save + return IngestionResult
+  GET  /paper/{paper_id}                 fetch a previously ingested paper's IngestionResult
+  GET  /paper/{paper_id}/page/{n}        the rendered PNG of page n (Box 2 output)
+  GET  /papers                           list all ingested paper_ids
 
 Run locally:
     uvicorn api.main:app --reload --port 8000
@@ -20,11 +21,12 @@ import shutil
 import tempfile
 from pathlib import Path
 
-from fastapi import FastAPI, File, HTTPException, UploadFile
-from fastapi.responses import JSONResponse
+from fastapi import FastAPI, File, HTTPException, Query, UploadFile
+from fastapi.responses import FileResponse, JSONResponse
 
 from api import storage
 from ingestion.baseline_extractor import extract_baseline
+from ingestion.rasterise import DEFAULT_DPI, rasterise_pdf, resolve_image_path
 from schema.ingestion_schema_v1 import SCHEMA_VERSION, IngestionResult
 
 app = FastAPI(
@@ -40,7 +42,13 @@ def health() -> dict:
 
 
 @app.post("/ingest", response_model=IngestionResult)
-async def ingest(file: UploadFile = File(...)) -> IngestionResult:
+async def ingest(
+    file: UploadFile = File(...),
+    rasterise: bool = Query(
+        True, description="Also render each page to a PNG (pipeline Box 2)."
+    ),
+    dpi: int = Query(DEFAULT_DPI, gt=0, le=600, description="Page render resolution."),
+) -> IngestionResult:
     if file.content_type not in ("application/pdf", "application/x-pdf") and not (
         file.filename or ""
     ).lower().endswith(".pdf"):
@@ -56,6 +64,21 @@ async def ingest(file: UploadFile = File(...)) -> IngestionResult:
         except Exception as exc:  # noqa: BLE001 — surface as a clean 400, don't 500 on a bad PDF
             raise HTTPException(status_code=400, detail=f"Failed to parse PDF: {exc}") from exc
 
+        # Rasterise while the upload is still on disk — the temp dir is gone
+        # once this block exits.
+        if rasterise:
+            try:
+                result.pages = rasterise_pdf(
+                    tmp_path,
+                    paper_id=result.paper.paper_id,
+                    out_root=storage.PROCESSED_DIR,
+                    dpi=dpi,
+                )
+            except Exception as exc:  # noqa: BLE001
+                raise HTTPException(
+                    status_code=400, detail=f"Failed to render pages: {exc}"
+                ) from exc
+
     storage.save(result)
     return result
 
@@ -66,6 +89,35 @@ def get_paper(paper_id: str) -> IngestionResult:
     if result is None:
         raise HTTPException(status_code=404, detail=f"No ingested paper with id '{paper_id}'")
     return result
+
+
+@app.get(
+    "/paper/{paper_id}/page/{page_index}",
+    response_class=FileResponse,
+    responses={200: {"content": {"image/png": {}}}},
+)
+def get_page_image(paper_id: str, page_index: int) -> FileResponse:
+    """The rendered bitmap of one page — open this in a browser to see
+    exactly what the layout detector (Box 3) will be looking at."""
+    result = storage.load(paper_id)
+    if result is None:
+        raise HTTPException(status_code=404, detail=f"No ingested paper with id '{paper_id}'")
+
+    page = next((p for p in result.pages if p.page_index == page_index), None)
+    if page is None:
+        raise HTTPException(
+            status_code=404,
+            detail=f"Paper '{paper_id}' has no rendered image for page {page_index}. "
+            f"It has {len(result.pages)} page image(s). Re-ingest with rasterise=true.",
+        )
+
+    path = resolve_image_path(storage.PROCESSED_DIR, page)
+    if not path.exists():
+        raise HTTPException(
+            status_code=404,
+            detail=f"Page image '{page.image_path}' is recorded but missing from disk.",
+        )
+    return FileResponse(path, media_type="image/png")
 
 
 @app.get("/papers")

@@ -17,10 +17,14 @@ output) all build against.
 - `ingestion/baseline_extractor.py` — flat PyMuPDF extraction (no layout
   awareness, fixed-size chunking). This is the "baseline" every later
   metric in the proposal compares against.
-- `ingestion/layout.py` — **stub.** Week 2+ layout-aware parsing goes
+- `ingestion/rasterise.py` — **pipeline Box 2.** Renders each page to a
+  PNG. Boxes 3, 6 and 8 all work on these pixels, so the page is
+  rendered once here and reused. `PageImage.scale` is the one place the
+  points-to-pixels conversion is defined.
+- `ingestion/layout.py` — **stub.** Box 3+ layout-aware parsing goes
   here (multi-column detection, section tree, artifact binding).
 - `api/main.py` — FastAPI service: upload a PDF, get back structured
-  JSON.
+  JSON plus rendered page images.
 - `scripts/generate_sample_pdf.py` — makes a synthetic test PDF so you
   can run everything before a real paper corpus is collected.
 - `tests/` — pytest suite covering the schema, the baseline extractor,
@@ -49,6 +53,9 @@ uvicorn api.main:app --reload --port 8000
 Open **http://127.0.0.1:8000/docs** — interactive Swagger UI. Try
 `POST /ingest` with any PDF (or generate one first, see below).
 
+Then open `http://127.0.0.1:8000/paper/{paper_id}/page/0` in a browser to
+see the rendered page image straight from the service.
+
 ## Generate a test PDF and ingest it manually
 
 ```bash
@@ -65,13 +72,20 @@ python schema/ingestion_schema_v1.py
 # writes schema/sample_output.json
 ```
 
-## Roadmap (see project plan)
+## Pipeline status
 
-- **Week 1 (done in this scaffold):** JSON schema locked, API skeleton,
-  PyMuPDF flat baseline, tests.
-- **Week 2:** layout region detection, reading-order reconstruction,
-  section tree, section-aware chunking (`ingestion/layout.py`).
-- **Week 3:** figure/table extraction + artifact repository, e5 +
-  Qdrant embeddings, `/paper/{id}` used by Members 2/3, ColPali spike.
-- **Week 4:** freeze, eval script (baseline vs. layout-aware), demo
-  rehearsal for Progress Presentation 1 (22–27 Oct 2026).
+The eight boxes from the component diagram in the proposal:
+
+| # | Stage | State |
+|---|-------|-------|
+| 1 | PDF input | ✅ `POST /ingest` |
+| 2 | Page rasterisation | ✅ `ingestion/rasterise.py` |
+| 3 | Layout region detection | ⬜ next |
+| 4 | Section identification | ⬜ |
+| 5 | Section-aware chunking | ⬜ |
+| 6 | Artifact extraction | ⬜ |
+| 7 | Artifact binding | ⬜ after PP1 |
+| 8 | Chunk + image store | ⬜ after PP1 (needs GPU for ColPali) |
+
+Boxes 1–6 are the ~50% backend target for **Progress Presentation 1
+(22–27 Oct 2026)**.
