@@ -6,6 +6,7 @@ Endpoints:
   POST /ingest                           upload a PDF -> baseline extract + rasterise -> save + return IngestionResult
   GET  /paper/{paper_id}                 fetch a previously ingested paper's IngestionResult
   GET  /paper/{paper_id}/page/{n}        the rendered PNG of page n (Box 2 output)
+  GET  /gallery/{paper_id}               every rendered page as one contact sheet (demo view)
   GET  /papers                           list all ingested paper_ids
 
 Run locally:
@@ -23,14 +24,17 @@ Members 2/3/4 can try real requests there without writing any client code.
 
 from __future__ import annotations
 
+import html
 import shutil
 import tempfile
 from pathlib import Path
+from urllib.parse import quote
 
 from fastapi import FastAPI, File, HTTPException, Query, UploadFile
-from fastapi.responses import FileResponse, JSONResponse
+from fastapi.responses import FileResponse, HTMLResponse, JSONResponse
 
 from api import storage
+from api.gallery import render_gallery
 from ingestion.baseline_extractor import extract_baseline
 from ingestion.rasterise import DEFAULT_DPI, rasterise_pdf, resolve_image_path
 from schema.ingestion_schema_v1 import SCHEMA_VERSION, IngestionResult
@@ -131,6 +135,16 @@ def get_page_image(paper_id: str, page_index: int) -> FileResponse:
             detail=f"Page image '{page.image_path}' is recorded but missing from disk.",
         )
     return FileResponse(path, media_type="image/png")
+
+
+@app.get("/gallery/{paper_id}", response_class=HTMLResponse, include_in_schema=False)
+def gallery(paper_id: str) -> HTMLResponse:
+    """Every rendered page of one paper, as a single contact sheet.
+
+    A demo surface for progress reviews — Members 2/3/4 read the JSON, not
+    this. Excluded from the OpenAPI schema so it doesn't clutter /docs.
+    """
+    return HTMLResponse(render_gallery(_load_or_404(paper_id)))
 
 
 @app.get("/papers")

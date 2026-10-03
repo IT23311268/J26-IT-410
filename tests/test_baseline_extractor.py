@@ -42,6 +42,38 @@ def test_extract_baseline_produces_chunks(sample_pdf: Path):
         assert chunk.text.strip() != ""
 
 
+@pytest.mark.parametrize(
+    "raw_title",
+    [
+        None,
+        "",
+        "   ",
+        "untitled",
+        "Untitled",
+        "PowerPoint Presentation",
+        "Microsoft Word - thesis_v3.docx",
+        "Document1",
+        "paper.pdf",  # producer echoed the filename
+        "paper",  # ...or its stem
+    ],
+)
+def test_generic_pdf_titles_are_treated_as_absent(raw_title):
+    """A citation reading "PowerPoint Presentation" is worse than one with
+    no title, so these never reach Members 2/3/4."""
+    from ingestion.baseline_extractor import _clean_title
+
+    assert _clean_title(raw_title, "paper.pdf") is None
+
+
+def test_a_real_title_survives_cleaning():
+    from ingestion.baseline_extractor import _clean_title
+
+    assert (
+        _clean_title("  Attention Is All You Need  ", "1706.03762.pdf")
+        == "Attention Is All You Need"
+    )
+
+
 def test_extract_baseline_respects_chunk_size(sample_pdf: Path):
     small = extract_baseline(sample_pdf, chunk_chars=200, chunk_overlap=20)
     large = extract_baseline(sample_pdf, chunk_chars=5000, chunk_overlap=0)

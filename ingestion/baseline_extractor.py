@@ -40,6 +40,42 @@ def make_paper_id(pdf_path: Path) -> str:
     return f"{pdf_path.stem}-{digest}"
 
 
+# PDF producers habitually stamp a generic string into the title metadata:
+# Word writes "Microsoft Word - thesis_v3.docx", PowerPoint writes
+# "PowerPoint Presentation", LaTeX tooling often leaves "untitled". Such a
+# title is worse than none at all — Member 4's manuscript compiler would
+# cite the reference as "PowerPoint Presentation". Treated as absent here,
+# so the real title comes from the first-page TITLE section that Box 4
+# identifies.
+_GENERIC_TITLES = {
+    "untitled",
+    "untitled document",
+    "document",
+    "document1",
+    "powerpoint presentation",
+    "presentation",
+    "slide 1",
+    "no title",
+}
+
+
+def _clean_title(raw: str | None, source_filename: str) -> str | None:
+    if not raw or not raw.strip():
+        return None
+    title = raw.strip()
+    folded = title.casefold()
+
+    if folded in _GENERIC_TITLES:
+        return None
+    if folded.startswith("microsoft word - "):
+        return None
+    # some producers just echo the filename back, which source_filename
+    # already records
+    if folded in {source_filename.casefold(), Path(source_filename).stem.casefold()}:
+        return None
+    return title
+
+
 def _fixed_size_chunks(text: str, size: int, overlap: int) -> list[str]:
     if not text.strip():
         return []
@@ -101,7 +137,7 @@ def extract_baseline(
             )
         )
 
-    title = (doc.metadata or {}).get("title") or None
+    title = _clean_title((doc.metadata or {}).get("title"), pdf_path.name)
 
     result = IngestionResult(
         paper=PaperMeta(

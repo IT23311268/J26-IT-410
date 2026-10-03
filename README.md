@@ -25,6 +25,9 @@ output) all build against.
   here (multi-column detection, section tree, artifact binding).
 - `api/main.py` — FastAPI service: upload a PDF, get back structured
   JSON plus rendered page images.
+- `api/gallery.py` — contact-sheet view of every rendered page, for
+  showing Box 2's output in one screen at a progress review. A demo
+  surface only; Members 2/3/4 read the JSON.
 - `scripts/generate_sample_pdf.py` — makes a synthetic test PDF so you
   can run everything before a real paper corpus is collected.
 - `tests/` — pytest suite covering the schema, the baseline extractor,
@@ -64,8 +67,14 @@ images into the watched tree and restarts the server mid-request.
 Open **http://127.0.0.1:8000/docs** — interactive Swagger UI. Try
 `POST /ingest` with any PDF (or generate one first, see below).
 
-Then open `http://127.0.0.1:8000/paper/{paper_id}/page/0` in a browser to
-see the rendered page image straight from the service.
+Then, with a `paper_id` from `http://127.0.0.1:8000/papers`:
+
+- `http://127.0.0.1:8000/gallery/{paper_id}` — **every page at once.** The
+  view to open in a progress review.
+- `http://127.0.0.1:8000/paper/{paper_id}/page/0` — one page, full size.
+
+A `paper_id` derived from a filename with spaces must be percent-encoded
+in the URL (`Linked%20Lists`). The gallery does this for you.
 
 ## Generate a test PDF and ingest it manually
 
