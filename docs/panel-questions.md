@@ -180,12 +180,35 @@ I measured them. There is a script in the repo,
 fonts it uses. I ran it on a real paper and built the rule from what was
 actually there, rather than from an assumption about what might be.
 
+**Q: A chart is full of text — axis labels, a legend. What happens to
+all of that?**
+It is folded into the figure. One page of the GPT-4 report has a chart
+with twenty language names and twenty percentages inside it, and each
+came back as its own region — about seventy on one page. Left alone
+they would have become seventy chunks: "Telugu", "25.0%". That is not
+prose, and it would have gone straight into the corpus Members 2 and 3
+retrieve from. A text block that sits mostly inside a figure now
+belongs to that figure, and its text is kept on the figure rather than
+thrown away, so Box 6 and Box 8 can still use it. Captions are exempt —
+one printed inside a figure's border is still a caption.
+
 **Q: What about tables?**
-`TABLE` exists in the enum but this stage never emits it. Telling a table
-apart from a column of short text lines needs ruling-line analysis, which
-belongs with the artifact work in Box 6. A ruled table currently merges
-into one region labelled FIGURE. I would rather emit no label than put a
-wrong one into the contract three other components read.
+Detected, from their rules. A scholarly table is set in the booktabs
+style — a horizontal rule above the header, one below it, one under the
+last row, and no vertical lines. Those rules are far too thin to be
+figures, so the figure detector throws them away; read on their own they
+are the clearest signal on the page. Two or more rules that line up
+horizontally, with text between them, is a table.
+
+This one is not cosmetic. Tables go to Member 4 for the IEEE output, and
+before this every cell came back as its own region — a results table
+dissolved into a scatter of numbers in the retrieval corpus.
+
+**Q: What if a table has no ruling lines?**
+It is missed, and comes back as body text. A table drawn with vertical
+lines or with no lines at all has no signal this stage can read. That is
+a known limit, and it is the honest place for the vision model in Box 8
+to take over.
 
 **Q: How do you know it works?**
 Two ways. There are 73 tests, including one that asserts the four marked

@@ -132,11 +132,25 @@ def test_the_figure_is_read_just_before_its_caption(two_column_regions):
         ("Figure 1: the pipeline", RegionType.CAPTION),
         ("Fig. 12 Overview", RegionType.CAPTION),
         ("Table 3 — results", RegionType.CAPTION),
-        ("figure 2 lowercase also counts", RegionType.CAPTION),
+        ("figure 2: lowercase prefix still counts", RegionType.CAPTION),
     ],
 )
 def test_caption_prefixes_are_recognised(text, expected):
     assert classify_block(text, 10.0, 10.0, is_image=False) == expected
+
+
+@pytest.mark.parametrize(
+    "text",
+    [
+        "Table 4 reports the comparison across both systems.",
+        "Figure 1 shows the overall pipeline used in this work.",
+        "The figure shows our method applied to twenty languages.",
+    ],
+)
+def test_prose_that_merely_mentions_a_figure_is_not_a_caption(text):
+    """A sentence continuing in lower case is a paragraph. An earlier
+    pattern stopped at the number and labelled these captions."""
+    assert classify_block(text, 10.0, 10.0, is_image=False) == RegionType.BODY
 
 
 def test_a_caption_wins_over_the_heading_rule():
@@ -415,8 +429,82 @@ def test_region_ids_are_unique_and_namespaced(two_column_regions):
     assert all(i.startswith("twocol::region::") for i in ids)
 
 
-def test_figures_carry_no_text_or_font_size(two_column_regions):
+def test_figures_carry_no_font_size(two_column_regions):
+    """A figure has no single font size; its text, when it has any, is
+    the labels it absorbed rather than prose it was set in."""
     for region in two_column_regions:
         if region.region_type == RegionType.FIGURE:
-            assert region.text == ""
             assert region.font_size is None
+
+
+def _build_chart_pdf(path: Path) -> Path:
+    """A chart with twenty labelled rows inside its border, prose above
+    it and a caption below — the shape that produced seventy stray BODY
+    regions on one page of the GPT-4 report."""
+    from reportlab.lib.pagesizes import letter
+    from reportlab.pdfgen import canvas
+
+    c = canvas.Canvas(str(path), pagesize=letter)
+    c.setFont("Helvetica", 10)
+    c.drawString(72, 740, "Results are shown in Figure 3 below, across twenty languages.")
+    c.rect(72, 300, 450, 400)
+
+    c.setFont("Helvetica", 7)
+    languages = [
+        "Telugu", "Marathi", "Bengali", "Punjabi", "Nepali", "Swahili", "Urdu",
+        "Thai", "Italian", "Spanish", "Polish", "Welsh", "Arabic", "Korean",
+        "Russian", "German", "French", "English", "Dutch", "Latvian",
+    ]
+    for i, language in enumerate(languages):
+        y = 680 - i * 19
+        c.drawString(80, y, language)
+        c.drawString(430, y, f"{60 + i}.{i}%")
+
+    c.setFont("Helvetica-Oblique", 9)
+    c.drawString(72, 285, "Figure 3: GPT-4 3-shot accuracy on MMLU across languages.")
+    c.showPage()
+    c.save()
+    return path
+
+
+def test_chart_labels_do_not_become_separate_body_regions(tmp_path: Path):
+    """Regression, found on the GPT-4 report.
+
+    Every tick, bar label and legend entry inside a chart came back as
+    its own BODY region. They would have become chunks — "Telugu",
+    "25.0%" — in the corpus Members 2 and 3 retrieve from.
+    """
+    pdf = _build_chart_pdf(tmp_path / "chart.pdf")
+    regions = extract_regions(pdf, "chart")
+
+    body = [r for r in regions if r.region_type == RegionType.BODY]
+    assert len(body) == 1, f"expected only the surrounding prose, got {len(body)}"
+    assert "twenty languages" in body[0].text
+
+
+def test_the_absorbed_labels_are_kept_on_the_figure(tmp_path: Path):
+    """Absorbed, not discarded — Box 6 and Box 8 still need them."""
+    pdf = _build_chart_pdf(tmp_path / "chart.pdf")
+    regions = extract_regions(pdf, "chart")
+
+    figure = next(r for r in regions if r.region_type == RegionType.FIGURE)
+    assert "Telugu" in figure.text
+    assert "Latvian" in figure.text
+
+
+def test_a_caption_inside_a_figure_border_stays_a_caption(tmp_path: Path):
+    pdf = _build_chart_pdf(tmp_path / "chart.pdf")
+    regions = extract_regions(pdf, "chart")
+
+    captions = [r for r in regions if r.region_type == RegionType.CAPTION]
+    assert len(captions) == 1
+    assert captions[0].text.startswith("Figure 3")
+
+
+def test_containment_ratio():
+    from ingestion.layout import containment_ratio
+
+    outer = (0, 0, 100, 100)
+    assert containment_ratio((10, 10, 20, 20), outer) == 1.0  # fully inside
+    assert containment_ratio((200, 200, 210, 210), outer) == 0.0  # fully outside
+    assert containment_ratio((90, 0, 110, 100), outer) == pytest.approx(0.5)  # half in

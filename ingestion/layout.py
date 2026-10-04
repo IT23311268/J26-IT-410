@@ -29,13 +29,24 @@ No model, no GPU, no training data. The ColPali vision parser in Box 8 is
 the upgrade for pages this geometry cannot read (heavily designed layouts,
 scans with no text layer) — not a replacement for it.
 
-What this does NOT do yet
--------------------------
-TABLE is in the RegionType enum but is never emitted here. Telling a
-table apart from a column of short text lines needs ruling-line detection,
-which belongs with the artifact extraction work in Box 6. Emitting a
-guess now would put wrong labels into the contract that Members 2/3/4
-read, which is worse than emitting none.
+Artifacts
+---------
+Figures, tables and equations are each found from a different signal:
+
+  figures    vector artwork, merged from the paths that make it up
+  tables     horizontal rules in the booktabs style
+  equations  the font a typesetter switches to for mathematics
+
+Each absorbs the text that sits inside it, so a chart's axis labels and
+a table's cells stay with the thing they belong to instead of scattering
+into the prose chunks that Members 2 and 3 retrieve from.
+
+Known limits
+------------
+A table drawn with no ruling lines, or with vertical ones only, is
+missed and comes back as body text. A page with no text layer at all —
+a scan — yields a single figure covering the page. Both are the honest
+place for the vision model in Box 8 to take over.
 """
 
 from __future__ import annotations
@@ -91,7 +102,23 @@ BOLD_FONT_MARKERS = ("bold", "-bd", "medi", "black", "heavy", "semib", "cmbx")
 # "Figure 3:", "Fig. 2.", "Table 1 —" and friends, at the very start of
 # the block. Captions are bound to their figure in Box 6, so mislabelling
 # one as BODY would put caption text into the prose chunks.
-CAPTION_RE = re.compile(r"^\s*(figure|fig\.?|table|tbl\.?)\s*\d+", re.IGNORECASE)
+# "Figure 3:", "Fig. 2.", "Table 1 —", "Figure 4 Overview".
+#
+# What follows the number matters. A caption continues with a separator
+# or a capitalised title; a sentence of prose continues in lower case —
+# "Table 4 reports the comparison across both systems" is a paragraph,
+# and an earlier version of this pattern labelled it a caption.
+# The (?-i:[A-Z]) turns case-insensitivity off for that one test. With
+# it on, "[A-Z]" also matches lower case, and "Table 4 reports..." was
+# still read as a caption.
+CAPTION_RE = re.compile(
+    r"^\s*(figure|fig\.?|table|tbl\.?)\s*\d+\s*(?:[:.–—-]|(?-i:[A-Z])|$)",
+    re.IGNORECASE,
+)
+
+# Which kind of artifact a caption announces. Used to label the thing it
+# sits next to, and by Box 6 to bind the two together.
+TABLE_CAPTION_RE = re.compile(r"^\s*(table|tbl\.?)\s*\d+", re.IGNORECASE)
 
 # Vector artwork smaller than this in either direction is furniture — a
 # rule under a heading, a box around a word, a table's ruling lines — not
@@ -157,6 +184,42 @@ MATH_RATIO_FOR_EQUATION = 0.5
 # came back as ten separate blocks — the sigma, each subscript, each
 # variable. Fragments within this distance are re-joined into one region.
 EQUATION_MERGE_GAP = 8.0
+
+# A scholarly table is drawn as horizontal rules with nothing between
+# them — the booktabs style: one rule above the header, one below it,
+# one under the last row, and no vertical lines at all.
+#
+# Those rules are how a table is found. They are far too thin to be
+# figures, so the figure detector discards them; read on their own they
+# are the clearest signal a page has. This matters because tables go to
+# Member 4, and without it every cell came back as its own BODY region —
+# the same corpus pollution as a chart's axis labels.
+MIN_TABLE_RULE_WIDTH_RATIO = 0.25   # of page width
+MAX_TABLE_RULE_THICKNESS = 3.0      # points; a rule is a hairline
+
+# Rules belong to the same table when they line up horizontally and sit
+# within this far apart vertically. A long table's body can be deep, so
+# the span is generous; two tables stacked on one page further apart
+# than this are read as two, which is the common case.
+MAX_TABLE_RULE_SPAN = 350.0
+
+# A table needs at least this many rules. One rule on its own is a
+# section divider or a running header, not a table.
+MIN_TABLE_RULES = 2
+
+# A text block this far inside a figure belongs to the figure.
+#
+# A chart carries its own text: axis ticks, bar labels, a legend, the
+# language names down the side. On one page of the GPT-4 report that was
+# seventy separate blocks inside a single chart, and each came back as
+# its own BODY region. They would have become seventy chunks — "Telugu",
+# "25.0%", "Marathi" — polluting the corpus Members 2 and 3 retrieve
+# from. Absorbed into the figure, they stay available on its `text`
+# field without being mistaken for prose.
+#
+# Captions are exempt: one printed inside a figure's border is still a
+# caption, and Box 6 needs it to label the artifact.
+FIGURE_ABSORB_RATIO = 0.7
 
 # A candidate figure with more than this fraction of its area covered by
 # text is not a figure — it is decoration sitting behind prose.
@@ -373,6 +436,7 @@ def classify_block(
     is_image: bool,
     math_ratio: float = 0.0,
     bold_ratio: float = 0.0,
+    region_kind: str | None = None,
 ) -> RegionType:
     """Label one block.
 
@@ -383,7 +447,7 @@ def classify_block(
     caption.
     """
     if is_image:
-        return RegionType.FIGURE
+        return RegionType.TABLE if region_kind == "table" else RegionType.FIGURE
     if CAPTION_RE.match(text):
         return RegionType.CAPTION
     if math_ratio >= MATH_RATIO_FOR_EQUATION:
@@ -478,6 +542,110 @@ def merge_equation_fragments(blocks: list[dict]) -> list[dict]:
         others.append({"type": 0, "bbox": tuple(bbox), "lines": lines})
 
     return others
+
+
+def table_blocks(page, page_width: float, text_blocks: list[dict]) -> list[dict]:
+    """Find tables from their horizontal rules, as pseudo-blocks.
+
+    Returns blocks shaped like images so the rest of the pipeline treats
+    them as artifacts, each marked `region_kind="table"`.
+
+    A group of rules only counts as a table when there is text between
+    them — otherwise a page's header and footer rules would qualify.
+    """
+    rules: list[tuple[float, float, float]] = []  # (y, x0, x1)
+    min_width = page_width * MIN_TABLE_RULE_WIDTH_RATIO
+
+    for drawing in page.get_drawings():
+        rect = drawing["rect"]
+        width = float(rect.x1 - rect.x0)
+        height = float(rect.y1 - rect.y0)
+        if width >= min_width and height <= MAX_TABLE_RULE_THICKNESS:
+            rules.append((float(rect.y0), float(rect.x0), float(rect.x1)))
+
+    if len(rules) < MIN_TABLE_RULES:
+        return []
+
+    rules.sort()
+    groups: list[list[tuple[float, float, float]]] = [[rules[0]]]
+    for rule in rules[1:]:
+        last = groups[-1][-1]
+        overlap = min(rule[2], last[2]) - max(rule[1], last[1])
+        shorter = min(rule[2] - rule[1], last[2] - last[1])
+        aligned = shorter > 0 and overlap / shorter > 0.5
+        if aligned and (rule[0] - last[0]) <= MAX_TABLE_RULE_SPAN:
+            groups[-1].append(rule)
+        else:
+            groups.append([rule])
+
+    tables: list[dict] = []
+    for group in groups:
+        if len(group) < MIN_TABLE_RULES:
+            continue
+        x0 = min(r[1] for r in group)
+        x1 = max(r[2] for r in group)
+        y0 = min(r[0] for r in group)
+        y1 = max(r[0] for r in group)
+        bbox = (x0, y0, x1, y1)
+
+        has_content = any(
+            containment_ratio(b["bbox"], bbox) >= FIGURE_ABSORB_RATIO for b in text_blocks
+        )
+        if has_content:
+            tables.append({"type": 1, "bbox": bbox, "lines": [], "region_kind": "table"})
+
+    return tables
+
+
+def containment_ratio(inner: tuple[float, ...], outer: tuple[float, ...]) -> float:
+    """How much of `inner`'s area lies inside `outer`."""
+    area = (inner[2] - inner[0]) * (inner[3] - inner[1])
+    if area <= 0:
+        return 0.0
+    ix0, iy0 = max(inner[0], outer[0]), max(inner[1], outer[1])
+    ix1, iy1 = min(inner[2], outer[2]), min(inner[3], outer[3])
+    if ix1 <= ix0 or iy1 <= iy0:
+        return 0.0
+    return ((ix1 - ix0) * (iy1 - iy0)) / area
+
+
+def absorb_text_into_figures(blocks: list[dict]) -> list[dict]:
+    """Fold a figure's own labels into the figure.
+
+    Returns the blocks with the absorbed ones removed; each figure gains
+    an `absorbed_text` entry holding what it swallowed, so the chart's
+    labels are still available to Box 6 and Box 8 without appearing as
+    prose.
+    """
+    figures = [b for b in blocks if b.get("type") == 1]
+    if not figures:
+        return blocks
+
+    kept: list[dict] = []
+    for block in blocks:
+        if block.get("type") == 1:
+            kept.append(block)
+            continue
+
+        text = _block_text(block)
+        if CAPTION_RE.match(text):
+            kept.append(block)  # a caption stays a caption, wherever it sits
+            continue
+
+        host = next(
+            (
+                figure
+                for figure in figures
+                if containment_ratio(block["bbox"], figure["bbox"]) >= FIGURE_ABSORB_RATIO
+            ),
+            None,
+        )
+        if host is None:
+            kept.append(block)
+        elif text:
+            host.setdefault("absorbed_text", []).append(text)
+
+    return kept
 
 
 def text_coverage_ratio(rect: list[float], text_blocks: list[dict]) -> float:
@@ -665,17 +833,23 @@ def extract_regions(pdf_path: Path, paper_id: str) -> list[LayoutRegion]:
                 if b.get("type") == 1 or _block_text(b)
             ]
             blocks.extend(vector_figure_blocks(page, text_blocks))
+            blocks.extend(table_blocks(page, page_width, text_blocks))
             if not blocks:
                 continue
 
             blocks = merge_equation_fragments(blocks)
+            blocks = absorb_text_into_figures(blocks)
             body_size = _page_body_size(blocks)
             gutters = find_gutters(blocks, page_width)
             columns = columns_from_gutters(gutters, page_width)
 
             for block, column_index in order_page_blocks(blocks, page_width, columns):
                 is_image = block.get("type") == 1
-                text = "" if is_image else _block_text(block)
+                if is_image:
+                    # a figure's own labels, kept but not mistaken for prose
+                    text = "\n".join(block.get("absorbed_text", []))
+                else:
+                    text = _block_text(block)
                 font_size = None if is_image else _block_font_size(block)
                 math_ratio = 0.0 if is_image else block_math_ratio(block)
                 bold_ratio = 0.0 if is_image else block_bold_ratio(block)
@@ -686,7 +860,13 @@ def extract_regions(pdf_path: Path, paper_id: str) -> list[LayoutRegion]:
                         region_id=f"{paper_id}::region::{order}",
                         paper_id=paper_id,
                         region_type=classify_block(
-                            text, font_size, body_size, is_image, math_ratio, bold_ratio
+                            text,
+                            font_size,
+                            body_size,
+                            is_image,
+                            math_ratio,
+                            bold_ratio,
+                            block.get("region_kind"),
                         ),
                         bbox=BoundingBox(page=page_index, x0=x0, y0=y0, x1=x1, y1=y1),
                         text=text,
