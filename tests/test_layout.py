@@ -147,6 +147,80 @@ def test_a_caption_wins_over_the_heading_rule():
     )
 
 
+def _bold_block(spans: list[tuple[str, str]]) -> dict:
+    return {
+        "type": 0,
+        "bbox": (0, 0, 200, 14),
+        "lines": [{"spans": [{"font": f, "text": t, "size": 10.0} for f, t in spans]}],
+    }
+
+
+def test_a_heading_bold_at_body_size_is_still_a_heading():
+    """Found on the RAG paper: "2.3  Generator: BART" is bold at exactly
+    body size, and the size-only rule missed it.
+
+    This one matters beyond tidiness — Box 4 builds the section tree out
+    of HEADING regions, so a missed heading loses a whole section.
+    """
+    from ingestion.layout import block_bold_ratio
+
+    block = _bold_block([("NimbusRomNo9L-Medi", "2.3  Generator: BART")])
+    bold = block_bold_ratio(block)
+
+    assert bold == 1.0
+    assert (
+        classify_block("2.3  Generator: BART", 10.0, 10.0, is_image=False, bold_ratio=bold)
+        == RegionType.HEADING
+    )
+
+
+def test_a_paragraph_opening_with_a_bold_run_in_stays_body():
+    """"**RAG-Sequence**  For RAG-Sequence, the likelihood..." is a
+    paragraph, not a heading. Only a few percent of it is bold."""
+    from ingestion.layout import block_bold_ratio
+
+    prose = (
+        " For RAG-Sequence, the likelihood does not break into a conventional "
+        "per-token likelihood, hence we cannot solve it with a single beam search."
+    )
+    block = _bold_block(
+        [("NimbusRomNo9L-Medi", "RAG-Sequence"), ("NimbusRomNo9L-Regu", prose)]
+    )
+    bold = block_bold_ratio(block)
+
+    assert bold < 0.2
+    assert (
+        classify_block("RAG-Sequence" + prose, 10.0, 10.0, is_image=False, bold_ratio=bold)
+        == RegionType.BODY
+    )
+
+
+def test_a_long_bold_passage_is_emphasis_not_a_heading():
+    """Bold alone is not enough — a heading also has to be short."""
+    assert (
+        classify_block("bold warning text " * 12, 10.0, 10.0, is_image=False, bold_ratio=1.0)
+        == RegionType.BODY
+    )
+
+
+@pytest.mark.parametrize(
+    "font,expected",
+    [
+        ("NimbusRomNo9L-Medi", True),
+        ("Helvetica-Bold", True),
+        ("CMBX10", True),
+        ("Arial-BoldMT", True),
+        ("NimbusRomNo9L-Regu", False),
+        ("CMR10", False),
+        ("Times-Roman", False),
+    ],
+)
+def test_bold_face_detection(font, expected):
+    from ingestion.layout import is_bold_font
+
+    assert is_bold_font(font) is expected
+
+
 def test_large_but_long_text_is_body_not_heading():
     """Headings are short. An abstract set large is still body text."""
     long_text = "word " * 60

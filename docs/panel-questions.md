@@ -121,6 +121,18 @@ look like body text. A block at least 12% larger than that and under 120
 characters is a heading. Longer than that and it is display text, not a
 heading.
 
+**Q: Not every heading is printed larger. How do you catch those?**
+By weight as well as size. "2.3  Generator: BART" in the RAG paper is
+bold at exactly body size, and a size-only rule missed it. A block is a
+heading when it is short *and* either larger than the body text or set
+predominantly bold. Both conditions are needed: a long bold passage is
+emphasis, and a paragraph that opens with a bold run-in is only a few
+percent bold, so it stays body text.
+
+This one matters more than it sounds. Box 4 builds the section tree out
+of the heading regions, so a missed heading does not just mislabel one
+block — it loses a whole section.
+
 **Q: How do you find captions?**
 A regular expression for "Figure 3", "Fig. 2", "Table 1" at the start of
 the block. The caption test runs **before** the heading test, because a
@@ -133,6 +145,40 @@ only reports *embedded raster images* as blocks, so matplotlib and TikZ
 figures were invisible. I read the vector drawing list separately, merge
 paths that sit close together — a chart is drawn as dozens of separate
 paths — and anything large enough becomes a figure region.
+
+**Q: The proposal says you extract equations. Do you?**
+Yes. A display equation is detected by the font its characters are set
+in: typesetters switch to a separate maths face, and that is the
+giveaway. I check for CMMI, CMSY and CMEX — the Computer Modern maths
+faces — plus the AMS, STIX, XITS and Latin Modern equivalents.
+
+**Q: How do you avoid labelling every paragraph with a symbol in it as
+an equation?**
+I measure the *share* of a block's characters set in a maths face, not
+whether any are. A body paragraph in the RAG paper had 170 ordinary
+characters and 7 in CMMI — a ratio of 0.04. A display equation is
+essentially all maths. The threshold is a half, and nothing real sits
+near it.
+
+**Q: Why not just match any Computer Modern font?**
+Because CMR and CMBX are also the *body* face of any paper typeset
+wholly in Computer Modern, which is most older LaTeX work. Matching them
+would label every paragraph of those papers as an equation. Only the
+faces used exclusively for mathematics are on the list.
+
+**Q: A PDF does not store equations as units. How do you get one back?**
+It does not — the RAG paper's first equation came back as ten separate
+blocks: the summation sign, each subscript, each variable, each bracket.
+I detect the maths blocks first, then merge the ones that sit close
+together into a single region. The gap is deliberately small, so two
+display equations on separate lines stay separate and fragments in
+different columns cannot reach across the gutter.
+
+**Q: How did you choose those font names?**
+I measured them. There is a script in the repo,
+`scripts/inspect_fonts.py`, that prints every block on a page with the
+fonts it uses. I ran it on a real paper and built the rule from what was
+actually there, rather than from an assumption about what might be.
 
 **Q: What about tables?**
 `TABLE` exists in the enum but this stage never emits it. Telling a table

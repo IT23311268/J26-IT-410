@@ -88,8 +88,13 @@ def test_ingest_detects_layout_and_serves_the_overlay(tmp_path: Path, monkeypatc
     assert resp.status_code == 200, resp.text
     body = resp.json()
 
+    from schema.ingestion_schema_v1 import SCHEMA_VERSION
+
     assert len(body["regions"]) > 0
-    assert body["schema_version"] == "1.2.0"
+    # compared against the constant, not a literal: this test is about
+    # layout and the overlay, and should not fail every time the schema
+    # version moves for an unrelated reason
+    assert body["schema_version"] == SCHEMA_VERSION
     # reading order recovered: the left column before the right
     texts = [r["text"] for r in body["regions"]]
     joined = " ".join(texts)

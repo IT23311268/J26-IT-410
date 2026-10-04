@@ -22,10 +22,13 @@ output) all build against.
   rendered once here and reused. `PageImage.scale` is the one place the
   points-to-pixels conversion is defined.
 - `ingestion/layout.py` — **pipeline Box 3.** Finds the blocks on each
-  page, classifies them (heading / body / caption / figure) and
-  reconstructs reading order, so a two-column paper comes out in the
+  page, classifies them (heading / body / caption / figure / equation)
+  and reconstructs reading order, so a two-column paper comes out in the
   order a human reads it instead of interleaved across the gutter. Pure
-  geometry — no model, no GPU.
+  geometry and font names — no model, no GPU.
+- `scripts/inspect_fonts.py` — diagnostic. Prints every block on a page
+  with the fonts it uses. The equation rules were built from its output
+  on a real paper rather than from a guess.
 - `api/overlay.py` — draws Box 3's regions on the page image, numbered in
   reading order. The way to *see* that detection worked.
 - `api/main.py` — FastAPI service: upload a PDF, get back structured

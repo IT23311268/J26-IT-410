@@ -22,12 +22,15 @@ from typing import Optional
 
 from pydantic import BaseModel, Field
 
-SCHEMA_VERSION = "1.2.0"
+SCHEMA_VERSION = "1.3.0"
 # Changelog
 #   1.0.0  initial contract (paper, chunks, artifacts)
 #   1.1.0  added PageImage + IngestionResult.pages (additive — 1.0.0
 #          readers keep working, the new field just defaults to [])
 #   1.2.0  added LayoutRegion + IngestionResult.regions (additive, Box 3)
+#   1.3.0  added RegionType.EQUATION. A new enum *value*, so code that
+#          switches on region_type keeps working but will see a label it
+#          has not met before — treat an unknown one as BODY.
 
 
 class SectionType(str, Enum):
@@ -141,6 +144,7 @@ class RegionType(str, Enum):
     CAPTION = "caption"
     FIGURE = "figure"
     TABLE = "table"
+    EQUATION = "equation"
 
 
 class LayoutRegion(BaseModel):

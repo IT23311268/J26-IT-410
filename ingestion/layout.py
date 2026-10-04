@@ -75,6 +75,19 @@ HEADING_SIZE_RATIO = 1.12
 # (a pull quote, an abstract set large), not a section heading.
 MAX_HEADING_CHARS = 120
 
+# Not every heading is set larger. "2.3  Generator: BART" in the RAG
+# paper is bold at exactly body size, and size alone missed it — which
+# matters more than it sounds, because Box 4 builds the section tree out
+# of the HEADING regions, so a missed heading loses a whole section.
+#
+# A block counts as bold when this much of it is set in a bold face.
+# The bar is high on purpose: a paragraph opening with a bold run-in
+# ("**RAG-Sequence**  For RAG-Sequence, ...") is a few percent bold and
+# must stay BODY.
+BOLD_RATIO_FOR_HEADING = 0.6
+
+BOLD_FONT_MARKERS = ("bold", "-bd", "medi", "black", "heavy", "semib", "cmbx")
+
 # "Figure 3:", "Fig. 2.", "Table 1 —" and friends, at the very start of
 # the block. Captions are bound to their figure in Box 6, so mislabelling
 # one as BODY would put caption text into the prose chunks.
@@ -89,6 +102,61 @@ MIN_FIGURE_SIDE = 36.0
 # drawn as dozens of separate paths (axes, ticks, each bar), and each one
 # on its own is noise; merged, they are one figure.
 FIGURE_MERGE_GAP = 12.0
+
+# Typesetters switch to a separate font for mathematics, and the font
+# name is the giveaway. Measured on arXiv:2005.11401 (RAG), whose body
+# face is NimbusRomNo9L while its equations use CMMI (math italic), CMSY
+# (symbols) and CMEX (the extensible glyphs — big sigmas and brackets).
+#
+# Only faces that are *exclusively* mathematical are listed. CMR and CMBX
+# appear inside equations too, but they are also the body face of any
+# paper typeset wholly in Computer Modern, so matching them would label
+# every paragraph of an older paper as an equation.
+MATH_FONT_MARKERS = (
+    "cmmi",     # Computer Modern math italic
+    "cmsy",     # Computer Modern math symbols
+    "cmex",     # Computer Modern extensible (large operators, brackets)
+    "msam",     # AMS symbols A
+    "msbm",     # AMS symbols B (blackboard bold)
+    "rsfs",     # Ralph Smith's formal script
+    "lmmath",   # Latin Modern Math
+    "stix",     # STIX Two Math
+    "xits",     # XITS Math
+    "mathjax",  # MathJax web fonts, in HTML-to-PDF conversions
+    "euclid",   # Euclid Math, used by Word's equation editor
+    "cambria math",
+)
+
+# Faces that appear *inside* equations but are not proof of one: the
+# upright digits, parentheses and operator names of a formula
+# ("BERT", "max", "exp") are set in these, and so is the body text of
+# any paper typeset wholly in Computer Modern.
+#
+# They count as maths only in a block that already contains unambiguous
+# maths AND is short enough to be a display equation — see
+# block_math_ratio. Without that rule, "d(z) = BERT(z)" came back as
+# BODY because only its variables were strong maths; with it applied
+# unconditionally, every paragraph of an older paper became an equation.
+WEAK_MATH_FONT_MARKERS = ("cmr", "cmbx", "cmti", "cmss")
+
+# A block longer than this is prose, whatever faces it mixes in. Display
+# equations are short; paragraphs are not.
+MAX_EQUATION_CHARS = 200
+
+# A block is an equation when at least this share of its characters are
+# set in a maths face.
+#
+# The threshold matters because *inline* maths is everywhere: a body
+# paragraph in the RAG paper came back with 170 ordinary characters and 7
+# in CMMI — a ratio of 0.04 — and must stay BODY. A display equation is
+# almost entirely maths. Nothing real sits near the middle, so half is a
+# safe place to draw the line.
+MATH_RATIO_FOR_EQUATION = 0.5
+
+# A display equation arrives shattered: the RAG paper's first equation
+# came back as ten separate blocks — the sigma, each subscript, each
+# variable. Fragments within this distance are re-joined into one region.
+EQUATION_MERGE_GAP = 8.0
 
 # A candidate figure with more than this fraction of its area covered by
 # text is not a figure — it is decoration sitting behind prose.
@@ -111,6 +179,72 @@ def _block_text(block: dict) -> str:
             parts.append(span.get("text", ""))
         parts.append("\n")
     return "".join(parts).strip()
+
+
+def is_math_font(font_name: str) -> bool:
+    """Is this font face used only for mathematics?"""
+    lowered = (font_name or "").lower()
+    return any(marker in lowered for marker in MATH_FONT_MARKERS)
+
+
+def is_bold_font(font_name: str) -> bool:
+    lowered = (font_name or "").lower()
+    return any(marker in lowered for marker in BOLD_FONT_MARKERS)
+
+
+def block_bold_ratio(block: dict) -> float:
+    """The share of this block's characters set in a bold face."""
+    bold_chars = 0
+    total_chars = 0
+    for line in block.get("lines", []):
+        for span in line.get("spans", []):
+            text = span.get("text", "").strip()
+            if not text:
+                continue
+            total_chars += len(text)
+            if is_bold_font(span.get("font", "")):
+                bold_chars += len(text)
+    if total_chars == 0:
+        return 0.0
+    return bold_chars / total_chars
+
+
+def is_weak_math_font(font_name: str) -> bool:
+    """A face that appears inside equations but also sets ordinary text."""
+    lowered = (font_name or "").lower()
+    return any(marker in lowered for marker in WEAK_MATH_FONT_MARKERS)
+
+
+def block_math_ratio(block: dict) -> float:
+    """The share of this block's characters that belong to mathematics.
+
+    Near 1.0 for a display equation, near 0.0 for prose, and a few
+    percent for a paragraph containing inline maths.
+
+    A short block that already contains unambiguous maths is a display
+    equation, so its upright digits and operator names count toward the
+    formula as well. In a long block the same faces are prose and do not.
+    """
+    strong_chars = 0
+    weak_chars = 0
+    total_chars = 0
+    for line in block.get("lines", []):
+        for span in line.get("spans", []):
+            text = span.get("text", "").strip()
+            if not text:
+                continue
+            total_chars += len(text)
+            font = span.get("font", "")
+            if is_math_font(font):
+                strong_chars += len(text)
+            elif is_weak_math_font(font):
+                weak_chars += len(text)
+
+    if total_chars == 0:
+        return 0.0
+    if strong_chars > 0 and total_chars <= MAX_EQUATION_CHARS:
+        return (strong_chars + weak_chars) / total_chars
+    return strong_chars / total_chars
 
 
 def _block_font_size(block: dict) -> float | None:
@@ -233,25 +367,117 @@ def _column_of(x_centre: float, columns: list[tuple[float, float]]) -> int:
 
 
 def classify_block(
-    text: str, font_size: float | None, body_size: float, is_image: bool
+    text: str,
+    font_size: float | None,
+    body_size: float,
+    is_image: bool,
+    math_ratio: float = 0.0,
+    bold_ratio: float = 0.0,
 ) -> RegionType:
     """Label one block.
 
-    Order matters: the caption test runs before the heading test, because
+    Order matters. The caption test runs before the heading test, because
     a caption set in bold at body size would otherwise fall through to
-    BODY, and one set large would read as a heading.
+    BODY and one set large would read as a heading. The equation test
+    runs after the caption test, so that "Figure 2: where x = y" stays a
+    caption.
     """
     if is_image:
         return RegionType.FIGURE
     if CAPTION_RE.match(text):
         return RegionType.CAPTION
-    if (
-        font_size is not None
-        and font_size >= body_size * HEADING_SIZE_RATIO
-        and len(text) <= MAX_HEADING_CHARS
-    ):
-        return RegionType.HEADING
+    if math_ratio >= MATH_RATIO_FOR_EQUATION:
+        return RegionType.EQUATION
+    # A heading is short, and then either larger than the body text or
+    # set bold. Either route alone is not enough: a long bold passage is
+    # emphasis, and a short large one could be a pull quote.
+    if len(text) <= MAX_HEADING_CHARS and text.strip():
+        is_larger = font_size is not None and font_size >= body_size * HEADING_SIZE_RATIO
+        is_bold = bold_ratio >= BOLD_RATIO_FOR_HEADING
+        if is_larger or is_bold:
+            return RegionType.HEADING
     return RegionType.BODY
+
+
+def merge_equation_fragments(blocks: list[dict]) -> list[dict]:
+    """Re-join the pieces of a display equation into one block.
+
+    A typeset equation does not arrive as one block. The RAG paper's
+    first equation came back as ten: the summation sign, its subscript,
+    each variable, each bracket. Ten regions for one formula is wrong on
+    its own terms, and it also breaks Box 5 — a chunk would start in the
+    middle of a formula.
+
+    Equation blocks close to one another are merged; everything else is
+    returned untouched. The gap is small, so two display equations on
+    separate lines stay separate, and fragments in different columns
+    cannot reach each other across a gutter.
+    """
+    equations: list[dict] = []
+    others: list[dict] = []
+    for block in blocks:
+        if block.get("type") == 0 and block_math_ratio(block) >= MATH_RATIO_FOR_EQUATION:
+            equations.append(block)
+        else:
+            others.append(block)
+
+    if len(equations) < 2:
+        return blocks
+
+    # groups[i] = (bbox as a mutable list, the fragments in that group)
+    groups: list[tuple[list[float], list[dict]]] = []
+    for block in equations:
+        x0, y0, x1, y1 = block["bbox"]
+        placed = False
+        for bbox, members in groups:
+            if (
+                x0 <= bbox[2] + EQUATION_MERGE_GAP
+                and bbox[0] <= x1 + EQUATION_MERGE_GAP
+                and y0 <= bbox[3] + EQUATION_MERGE_GAP
+                and bbox[1] <= y1 + EQUATION_MERGE_GAP
+            ):
+                bbox[0], bbox[1] = min(bbox[0], x0), min(bbox[1], y0)
+                bbox[2], bbox[3] = max(bbox[2], x1), max(bbox[3], y1)
+                members.append(block)
+                placed = True
+                break
+        if not placed:
+            groups.append(([x0, y0, x1, y1], [block]))
+
+    # One pass can leave two groups that have since grown into contact,
+    # so keep going until a pass changes nothing.
+    changed = True
+    while changed:
+        changed = False
+        merged_groups: list[tuple[list[float], list[dict]]] = []
+        for bbox, members in groups:
+            for other_bbox, other_members in merged_groups:
+                if (
+                    bbox[0] <= other_bbox[2] + EQUATION_MERGE_GAP
+                    and other_bbox[0] <= bbox[2] + EQUATION_MERGE_GAP
+                    and bbox[1] <= other_bbox[3] + EQUATION_MERGE_GAP
+                    and other_bbox[1] <= bbox[3] + EQUATION_MERGE_GAP
+                ):
+                    other_bbox[0] = min(other_bbox[0], bbox[0])
+                    other_bbox[1] = min(other_bbox[1], bbox[1])
+                    other_bbox[2] = max(other_bbox[2], bbox[2])
+                    other_bbox[3] = max(other_bbox[3], bbox[3])
+                    other_members.extend(members)
+                    changed = True
+                    break
+            else:
+                merged_groups.append((list(bbox), list(members)))
+        groups = merged_groups
+
+    for bbox, members in groups:
+        # fragments read left to right along each line of the formula
+        members.sort(key=lambda b: (round(b["bbox"][1] / 4), b["bbox"][0]))
+        lines: list[dict] = []
+        for member in members:
+            lines.extend(member.get("lines", []))
+        others.append({"type": 0, "bbox": tuple(bbox), "lines": lines})
+
+    return others
 
 
 def text_coverage_ratio(rect: list[float], text_blocks: list[dict]) -> float:
@@ -442,6 +668,7 @@ def extract_regions(pdf_path: Path, paper_id: str) -> list[LayoutRegion]:
             if not blocks:
                 continue
 
+            blocks = merge_equation_fragments(blocks)
             body_size = _page_body_size(blocks)
             gutters = find_gutters(blocks, page_width)
             columns = columns_from_gutters(gutters, page_width)
@@ -450,13 +677,17 @@ def extract_regions(pdf_path: Path, paper_id: str) -> list[LayoutRegion]:
                 is_image = block.get("type") == 1
                 text = "" if is_image else _block_text(block)
                 font_size = None if is_image else _block_font_size(block)
+                math_ratio = 0.0 if is_image else block_math_ratio(block)
+                bold_ratio = 0.0 if is_image else block_bold_ratio(block)
                 x0, y0, x1, y1 = block["bbox"]
 
                 regions.append(
                     LayoutRegion(
                         region_id=f"{paper_id}::region::{order}",
                         paper_id=paper_id,
-                        region_type=classify_block(text, font_size, body_size, is_image),
+                        region_type=classify_block(
+                            text, font_size, body_size, is_image, math_ratio, bold_ratio
+                        ),
                         bbox=BoundingBox(page=page_index, x0=x0, y0=y0, x1=x1, y1=y1),
                         text=text,
                         column_index=column_index,

@@ -29,6 +29,7 @@ REGION_COLOURS: dict[RegionType, tuple[int, int, int]] = {
     RegionType.CAPTION: (191, 103, 7),  # amber
     RegionType.FIGURE: (124, 58, 173),  # violet
     RegionType.TABLE: (173, 38, 45),  # red
+    RegionType.EQUATION: (14, 118, 140),  # teal
 }
 
 _FONT_CANDIDATES = [
