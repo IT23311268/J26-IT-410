@@ -72,6 +72,62 @@ def test_ingest_rasterises_pages_and_serves_them(tmp_path: Path, monkeypatch):
     assert missing.status_code == 404
 
 
+def test_ingest_detects_layout_and_serves_the_overlay(tmp_path: Path, monkeypatch):
+    from api import storage
+    from scripts.generate_two_column_pdf import build_two_column_pdf
+
+    monkeypatch.setattr(storage, "PROCESSED_DIR", tmp_path / "processed")
+
+    pdf_path = tmp_path / "two_column.pdf"
+    build_two_column_pdf(pdf_path)
+
+    with pdf_path.open("rb") as f:
+        resp = client.post(
+            "/ingest", files={"file": ("two_column.pdf", f, "application/pdf")}
+        )
+    assert resp.status_code == 200, resp.text
+    body = resp.json()
+
+    assert len(body["regions"]) > 0
+    assert body["schema_version"] == "1.2.0"
+    # reading order recovered: the left column before the right
+    texts = [r["text"] for r in body["regions"]]
+    joined = " ".join(texts)
+    assert joined.index("ALPHA") < joined.index("BETA") < joined.index("GAMMA")
+
+    paper_id = body["paper"]["paper_id"]
+
+    overlay = client.get(f"/paper/{paper_id}/page/0/layout")
+    assert overlay.status_code == 200, overlay.text
+    assert overlay.headers["content-type"] == "image/png"
+    assert overlay.content[:8] == b"\x89PNG\r\n\x1a\n"
+    # the overlay is drawn on top of the page, so it is never smaller
+    plain = client.get(f"/paper/{paper_id}/page/0")
+    assert len(overlay.content) > len(plain.content) * 0.5
+
+
+def test_overlay_404s_when_layout_was_not_run(tmp_path: Path, monkeypatch):
+    from api import storage
+    from scripts.generate_sample_pdf import build_sample_pdf
+
+    monkeypatch.setattr(storage, "PROCESSED_DIR", tmp_path / "processed")
+
+    pdf_path = tmp_path / "sample.pdf"
+    build_sample_pdf(pdf_path)
+    with pdf_path.open("rb") as f:
+        resp = client.post(
+            "/ingest",
+            files={"file": ("sample.pdf", f, "application/pdf")},
+            params={"detect_layout": "false"},
+        )
+    assert resp.json()["regions"] == []
+
+    paper_id = resp.json()["paper"]["paper_id"]
+    overlay = client.get(f"/paper/{paper_id}/page/0/layout")
+    assert overlay.status_code == 404
+    assert "detect_layout=true" in overlay.json()["detail"]
+
+
 def test_ingest_can_skip_rasterisation(tmp_path: Path, monkeypatch):
     """Text-only mode stays available — it is the cheap path for the
     baseline-vs-layout-aware evaluation run."""

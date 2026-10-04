@@ -21,8 +21,13 @@ output) all build against.
   PNG. Boxes 3, 6 and 8 all work on these pixels, so the page is
   rendered once here and reused. `PageImage.scale` is the one place the
   points-to-pixels conversion is defined.
-- `ingestion/layout.py` — **stub.** Box 3+ layout-aware parsing goes
-  here (multi-column detection, section tree, artifact binding).
+- `ingestion/layout.py` — **pipeline Box 3.** Finds the blocks on each
+  page, classifies them (heading / body / caption / figure) and
+  reconstructs reading order, so a two-column paper comes out in the
+  order a human reads it instead of interleaved across the gutter. Pure
+  geometry — no model, no GPU.
+- `api/overlay.py` — draws Box 3's regions on the page image, numbered in
+  reading order. The way to *see* that detection worked.
 - `api/main.py` — FastAPI service: upload a PDF, get back structured
   JSON plus rendered page images.
 - `api/gallery.py` — contact-sheet view of every rendered page, for
@@ -72,6 +77,10 @@ Then, with a `paper_id` from `http://127.0.0.1:8000/papers`:
 - `http://127.0.0.1:8000/gallery/{paper_id}` — **every page at once.** The
   view to open in a progress review.
 - `http://127.0.0.1:8000/paper/{paper_id}/page/0` — one page, full size.
+- `http://127.0.0.1:8000/paper/{paper_id}/page/0/layout` — **the same page
+  with Box 3's detected regions drawn on it**, numbered in reading order.
+  On a two-column paper the numbers should run down the left column
+  before crossing to the right.
 
 A `paper_id` derived from a filename with spaces must be percent-encoded
 in the URL (`Linked%20Lists`). The gallery does this for you.
@@ -100,8 +109,8 @@ The eight boxes from the component diagram in the proposal:
 |---|-------|-------|
 | 1 | PDF input | ✅ `POST /ingest` |
 | 2 | Page rasterisation | ✅ `ingestion/rasterise.py` |
-| 3 | Layout region detection | ⬜ next |
-| 4 | Section identification | ⬜ |
+| 3 | Layout region detection | ✅ `ingestion/layout.py` |
+| 4 | Section identification | ⬜ next |
 | 5 | Section-aware chunking | ⬜ |
 | 6 | Artifact extraction | ⬜ |
 | 7 | Artifact binding | ⬜ after PP1 |

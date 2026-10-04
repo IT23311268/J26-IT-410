@@ -22,11 +22,12 @@ from typing import Optional
 
 from pydantic import BaseModel, Field
 
-SCHEMA_VERSION = "1.1.0"
+SCHEMA_VERSION = "1.2.0"
 # Changelog
 #   1.0.0  initial contract (paper, chunks, artifacts)
 #   1.1.0  added PageImage + IngestionResult.pages (additive — 1.0.0
 #          readers keep working, the new field just defaults to [])
+#   1.2.0  added LayoutRegion + IngestionResult.regions (additive, Box 3)
 
 
 class SectionType(str, Enum):
@@ -129,6 +130,51 @@ class PageImage(BaseModel):
         return self.dpi / 72.0
 
 
+class RegionType(str, Enum):
+    """What a detected block on the page is. Deliberately coarse — these
+    are the distinctions the later stages act on, and a label we cannot
+    assign confidently becomes BODY rather than a guess, because a wrong
+    HEADING splits the section tree in the wrong place."""
+
+    HEADING = "heading"
+    BODY = "body"
+    CAPTION = "caption"
+    FIGURE = "figure"
+    TABLE = "table"
+
+
+class LayoutRegion(BaseModel):
+    """One detected block on one page — pipeline Box 3.
+
+    Box 4 reads the HEADING regions to build the section tree, Box 5
+    chunks the BODY regions in `order_index` sequence, and Box 6 crops
+    the FIGURE regions. So this is the join between the geometry on the
+    page and everything downstream.
+    """
+
+    region_id: str = Field(..., description="Stable ID: '{paper_id}::region::{n}'")
+    paper_id: str
+    region_type: RegionType
+    bbox: BoundingBox
+    text: str = Field("", description="Text inside the region; empty for FIGURE")
+    column_index: int = Field(
+        0,
+        ge=0,
+        description="Which column of the page this sits in, 0 = leftmost. "
+        "Single-column pages are all 0.",
+    )
+    order_index: int = Field(
+        ...,
+        description="Reading-order position across the whole document. THIS, "
+        "not the top-to-bottom position on the page, is the order the text "
+        "is meant to be read in — the distinction that multi-column papers "
+        "turn on.",
+    )
+    font_size: Optional[float] = Field(
+        None, description="Dominant font size in points; None for FIGURE"
+    )
+
+
 class ExtractionMethod(str, Enum):
     """How this paper was parsed. Lets the eval script separate baseline
     runs from the real layout-aware pipeline in the same output format."""
@@ -158,6 +204,11 @@ class IngestionResult(BaseModel):
         default_factory=list,
         description="Rendered page bitmaps, in page order. Empty on a "
         "text-only baseline run — downstream code must tolerate that.",
+    )
+    regions: list[LayoutRegion] = Field(
+        default_factory=list,
+        description="Detected layout blocks in reading order (Box 3). Empty "
+        "on a baseline run.",
     )
 
 

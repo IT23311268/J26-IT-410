@@ -6,6 +6,7 @@ Endpoints:
   POST /ingest                           upload a PDF -> baseline extract + rasterise -> save + return IngestionResult
   GET  /paper/{paper_id}                 fetch a previously ingested paper's IngestionResult
   GET  /paper/{paper_id}/page/{n}        the rendered PNG of page n (Box 2 output)
+  GET  /paper/{paper_id}/page/{n}/layout the same page with detected regions drawn on it (Box 3)
   GET  /gallery/{paper_id}               every rendered page as one contact sheet (demo view)
   GET  /papers                           list all ingested paper_ids
 
@@ -30,14 +31,16 @@ import tempfile
 from pathlib import Path
 from urllib.parse import quote
 
-from fastapi import FastAPI, File, HTTPException, Query, UploadFile
+from fastapi import FastAPI, File, HTTPException, Query, Response, UploadFile
 from fastapi.responses import FileResponse, HTMLResponse, JSONResponse
 
 from api import storage
 from api.gallery import render_gallery
+from api.overlay import render_overlay
 from ingestion.baseline_extractor import extract_baseline
+from ingestion.layout import extract_regions
 from ingestion.rasterise import DEFAULT_DPI, rasterise_pdf, resolve_image_path
-from schema.ingestion_schema_v1 import SCHEMA_VERSION, IngestionResult
+from schema.ingestion_schema_v1 import SCHEMA_VERSION, IngestionResult, PageImage
 
 app = FastAPI(
     title="J26-IT-410 Ingestion Service",
@@ -56,6 +59,9 @@ async def ingest(
     file: UploadFile = File(...),
     rasterise: bool = Query(
         True, description="Also render each page to a PNG (pipeline Box 2)."
+    ),
+    detect_layout: bool = Query(
+        True, description="Also detect layout regions and reading order (pipeline Box 3)."
     ),
     dpi: int = Query(DEFAULT_DPI, gt=0, le=600, description="Page render resolution."),
 ) -> IngestionResult:
@@ -89,6 +95,14 @@ async def ingest(
                     status_code=400, detail=f"Failed to render pages: {exc}"
                 ) from exc
 
+        if detect_layout:
+            try:
+                result.regions = extract_regions(tmp_path, result.paper.paper_id)
+            except Exception as exc:  # noqa: BLE001
+                raise HTTPException(
+                    status_code=400, detail=f"Failed to detect layout: {exc}"
+                ) from exc
+
     storage.save(result)
     return result
 
@@ -110,6 +124,17 @@ def get_paper(paper_id: str) -> IngestionResult:
     return _load_or_404(paper_id)
 
 
+def _page_or_404(result: IngestionResult, paper_id: str, page_index: int) -> PageImage:
+    page = next((p for p in result.pages if p.page_index == page_index), None)
+    if page is None:
+        raise HTTPException(
+            status_code=404,
+            detail=f"Paper '{paper_id}' has no rendered image for page {page_index}. "
+            f"It has {len(result.pages)} page image(s). Re-ingest with rasterise=true.",
+        )
+    return page
+
+
 @app.get(
     "/paper/{paper_id}/page/{page_index}",
     response_class=FileResponse,
@@ -119,14 +144,7 @@ def get_page_image(paper_id: str, page_index: int) -> FileResponse:
     """The rendered bitmap of one page — open this in a browser to see
     exactly what the layout detector (Box 3) will be looking at."""
     result = _load_or_404(paper_id)
-
-    page = next((p for p in result.pages if p.page_index == page_index), None)
-    if page is None:
-        raise HTTPException(
-            status_code=404,
-            detail=f"Paper '{paper_id}' has no rendered image for page {page_index}. "
-            f"It has {len(result.pages)} page image(s). Re-ingest with rasterise=true.",
-        )
+    page = _page_or_404(result, paper_id, page_index)
 
     path = resolve_image_path(storage.PROCESSED_DIR, page)
     if not path.exists():
@@ -135,6 +153,39 @@ def get_page_image(paper_id: str, page_index: int) -> FileResponse:
             detail=f"Page image '{page.image_path}' is recorded but missing from disk.",
         )
     return FileResponse(path, media_type="image/png")
+
+
+@app.get(
+    "/paper/{paper_id}/page/{page_index}/layout",
+    response_class=Response,
+    responses={200: {"content": {"image/png": {}}}},
+)
+def get_layout_overlay(paper_id: str, page_index: int) -> Response:
+    """The page image with Box 3's detected regions drawn on it.
+
+    The numbered badges are reading order. On a two-column page they
+    should run down the left column before crossing to the right.
+    """
+    result = _load_or_404(paper_id)
+    page = _page_or_404(result, paper_id, page_index)
+
+    path = resolve_image_path(storage.PROCESSED_DIR, page)
+    if not path.exists():
+        raise HTTPException(
+            status_code=404,
+            detail=f"Page image '{page.image_path}' is recorded but missing from disk.",
+        )
+
+    page_regions = [r for r in result.regions if r.bbox.page == page_index]
+    if not page_regions:
+        raise HTTPException(
+            status_code=404,
+            detail=f"No layout regions for page {page_index} of '{paper_id}'. "
+            "Re-ingest with detect_layout=true.",
+        )
+
+    png = render_overlay(path, page_regions, page.scale)
+    return Response(content=png, media_type="image/png")
 
 
 @app.get("/gallery/{paper_id}", response_class=HTMLResponse, include_in_schema=False)
