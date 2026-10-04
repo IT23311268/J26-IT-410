@@ -143,6 +143,15 @@ def test_rules_with_no_text_between_them_are_not_a_table(tmp_path: Path):
     assert not [r for r in regions if r.region_type == RegionType.TABLE]
 
 
+def test_a_ruled_table_does_not_also_become_a_figure(table_regions):
+    """A table's rules are vector paths like any other, so the figure
+    detector sees them too. Two things keep it off: three rules spaced a
+    row apart do not merge into one drawing, and a merged one would be
+    mostly covered by text. Without both, every table would come back
+    twice — once as a table and once as a figure."""
+    assert not [r for r in table_regions if r.region_type == RegionType.FIGURE]
+
+
 def test_a_chart_is_still_a_figure_not_a_table(tmp_path: Path):
     """The two detectors must not fight over the same page."""
     from reportlab.lib.pagesizes import letter

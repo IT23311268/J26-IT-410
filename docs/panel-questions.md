@@ -13,7 +13,7 @@ engineering decisions in it, so it attracts the most questions.
 > produces the structured JSON that Members 2, 3 and 4 build on. Right
 > now it does three things: it accepts and stores the PDF, it renders
 > every page to an image, and it detects the layout regions on each page
-> and recovers the correct reading order. Everything is tested — 73
+> and recovers the correct reading order. Everything is tested — 168
 > tests — and it runs as a FastAPI service you can try in a browser."
 
 ---
@@ -204,6 +204,97 @@ This one is not cosmetic. Tables go to Member 4 for the IEEE output, and
 before this every cell came back as its own region — a results table
 dissolved into a scatter of numbers in the retrieval corpus.
 
+**Q: A chart's axes are horizontal lines too. How do you keep the two
+detectors apart?**
+By company. An axis sits inside the drawing its own chart is made of
+and a table's rule does not, so the figures are found first and any rule
+inside one is that figure's axis. Without it the chain ran from the
+table's top rule, straight past the caption, down to the chart's
+baseline, and one region came back covering two different artifacts —
+which matters because tables and figures go to Member 4 as separate
+things. It was visible the moment I put the layout overlay on a page of
+the GPT-4 report that happens to carry both.
+
+**Q: A chart's tick labels are printed outside its frame. Do you lose
+them?**
+No, but I did at first. The containment rule only reaches text *inside*
+a figure, and matplotlib draws the ticks, the axis title and the chart
+title outside the plot frame, so "gpt-3.5-base", "0-shot" and "Model"
+each came back as a region of their own. The chart title was bold and
+short, so it was labelled a heading — which would have opened a section
+in Box 4 that does not exist in the paper.
+
+So the figure is grown to its real extent before anything is absorbed:
+text that all but touches its edge is part of the graphic. I measured
+it on that page — the furniture sits 4.5 to 11.6 pt from the frame,
+and the nearest thing that is *not* part of the chart, its caption, is
+30.3 pt away. Nothing real sits in between, so the halo is 12 pt. The
+growth repeats, because the x-axis labels bring the frame down far
+enough that the axis title beneath them comes within reach on the next
+pass, and it only ever takes in short text, never a caption.
+
+**Q: The caption says "Table 4". Why work it out from the drawing at
+all?**
+I should have asked that sooner — it is the best signal on the page
+and it is the author's own. Geometry has to *infer* whether a box of
+ruled lines is a table or a chart; the caption simply says. So the
+division of labour is: geometry decides *where* an artifact is,
+because a caption cannot give you a bounding box, and the caption
+decides *what it is called*, overruling the drawing when they
+disagree. A caption claims the artifact nearest to it — measured
+across these pages, a caption sits 1.9 to 8.5 pt from its own
+artifact and 33 pt or more from any other, so the pairing is not close
+to ambiguous.
+
+It also reaches a case no structural test can. A table pasted into a
+paper as a screenshot has no rules to read and is a figure by every
+geometric measure there is. Its caption still says Table, and that is
+now what it is filed as — which matters, because tables go to Member 4
+for the IEEE output.
+
+**Q: Then is the drawing analysis redundant?**
+No, for two reasons. It is what finds the artifact in the first place
+and sets its bounding box. And not every artifact has a caption, so it
+is still the fallback — the caption corrects a label, it does not
+replace the detector.
+
+**Q: A table can be drawn as a box rather than booktabs rules. Does
+that confuse the two?**
+It did, and the way it broke is the part worth telling. Reading a
+chart's axes as part of its drawing is what makes the tick labels
+reachable — but a boxed table's border is straight lines too, so it
+merged into a figure as well, and a figure's rules are excluded from
+the table detector. The table lost its own rules and disappeared
+completely. One fix caused the other failure.
+
+What separates them is artwork. A figure contains something that is
+not a straight line — a filled bar, a curve, a marker. A box, a frame
+and a set of rules are furniture, and a cluster made only of those is
+not a picture of anything. Measured on that page: the table
+contributes 6 straight lines and no other shape, the chart 4 lines and
+8 bars. Text coverage, the guard that was already there, reads 0.17
+against 0.07 — a table is mostly white space between its columns, so
+it could not separate them.
+
+**Q: Why is the size of the type part of the test, and not just the
+length?**
+Because PyMuPDF returns a chart's whole row of x-axis labels as one
+block, and on a real chart that runs past a hundred characters —
+"Anthropic-LM 0-shot Anthropic-LM RLHF gpt-3.5-base 0-shot ...". A
+length test threw it out and the row came back as a paragraph. Chart
+furniture is always set smaller than the body text, 6 pt against 9 pt
+on that page, so size catches the long row and length catches a short
+axis title set at body size. Prose fails both, because it is long
+*and* at body size.
+
+**Q: Then why does a figure's bounding box not just come from PyMuPDF?**
+Because it reports one rectangle per path and a chart is dozens of
+them. There was also a quieter bug here: an axis line has zero area, so
+PyMuPDF marks its rectangle "empty" and I was skipping those. The
+figure then stopped at the edge of the *bars* rather than the axes,
+which is wrong on its own terms and is why the labels outside the frame
+could not be reached in the first place.
+
 **Q: What if a table has no ruling lines?**
 It is missed, and comes back as body text. A table drawn with vertical
 lines or with no lines at all has no signal this stage can read. That is
@@ -211,7 +302,7 @@ a known limit, and it is the honest place for the vision model in Box 8
 to take over.
 
 **Q: How do you know it works?**
-Two ways. There are 73 tests, including one that asserts the four marked
+Two ways. There are 168 tests, including one that asserts the four marked
 paragraphs of a synthetic two-column paper come out in the order
 ALPHA, BETA, GAMMA, DELTA — and a second test that confirms the naive
 top-to-bottom order *would* have been wrong, so the first test cannot
@@ -219,6 +310,32 @@ pass for the wrong reason. And there is a visual check: the
 `/layout` endpoint draws the detected regions on the page, numbered in
 reading order, so you can see at a glance whether the numbers run down
 the left column before crossing to the right.
+
+**Q: You measured those thresholds on one or two pages. How do you know
+they hold on other papers?**
+I do not yet, and that is the right question. The *rules* carry over —
+"a rule inside a figure is that figure's axis" has no number in it at
+all — and two of the thresholds have a wide margin either side of them:
+text coverage measured 0.71 against 0.00, the maths ratio 0.04 against
+almost 1.0. The one I would not defend yet is the 12 pt figure halo,
+because it came from a single page and the gap it measures scales with
+the body font size.
+
+So I wrote `scripts/check_corpus.py`. It runs the stage over a folder
+of papers and reports the pages carrying the shapes every bug so far
+produced — short text scattered around a figure, a table and a figure
+overlapping, a page with no text layer. It does not know the right
+answer; it narrows a corpus down to the pages worth opening in the
+overlay. A clean run across the arXiv set is the evidence, and until I
+have it the honest answer is that these numbers are measured, not yet
+validated.
+
+**Q: How do you know the checker itself works?**
+By reintroducing the bugs. `tests/test_check_corpus.py` turns the halo
+off and asserts the checker reports scattered labels, then lets a
+chart's axes count as table rules again and asserts it reports the
+overlap. A checker that cannot see the bugs it was written for is worse
+than no checker, because then a clean run reads as evidence.
 
 **Q: What happens on a scanned PDF?**
 There is no text layer, so geometry has nothing to read. It returns one
@@ -234,7 +351,7 @@ multimodal.
 ## Questions about engineering practice
 
 **Q: How do you know you have not broken anything?**
-73 tests, run before every commit. Eight of them exist because of a bug
+168 tests, run before every commit. Eight of them exist because of a bug
 I hit: the dev server's auto-reloader restarted the process while a
 record was being written and left a zero-byte file, so every later read
 of that paper failed. I fixed it by writing to a temporary file and

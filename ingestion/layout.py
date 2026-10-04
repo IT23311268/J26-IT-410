@@ -39,7 +39,13 @@ Figures, tables and equations are each found from a different signal:
 
 Each absorbs the text that sits inside it, so a chart's axis labels and
 a table's cells stay with the thing they belong to instead of scattering
-into the prose chunks that Members 2 and 3 retrieve from.
+into the prose chunks that Members 2 and 3 retrieve from. A figure is
+first grown to its real extent, because a chart's ticks and axis titles
+are printed just *outside* its plot frame.
+
+The two detectors have to be told apart explicitly: a chart's axes are
+wide hairlines, exactly like a table's booktabs rules, so a rule inside
+a figure is read as that figure's axis and never as a table.
 
 Known limits
 ------------
@@ -116,9 +122,27 @@ CAPTION_RE = re.compile(
     re.IGNORECASE,
 )
 
-# Which kind of artifact a caption announces. Used to label the thing it
-# sits next to, and by Box 6 to bind the two together.
+# Which kind of artifact a caption announces.
+#
+# This is the most authoritative signal on the page, and it is the
+# author's own: geometry has to *infer* whether a box of ruled lines is
+# a table or a chart, but "Table 4:" printed underneath it simply says
+# so. Geometry still has to find where the artifact is — a caption
+# cannot give you a bounding box — so the division of labour is:
+# geometry decides where, the caption decides what it is called.
+#
+# A caption claims the artifact nearest to it. Measured across the
+# pages this was built on, a caption sits 1.9 to 8.5 pt from its own
+# artifact and 33 pt or more from any other, so the pairing is not
+# close to ambiguous.
 TABLE_CAPTION_RE = re.compile(r"^\s*(table|tbl\.?)\s*\d+", re.IGNORECASE)
+
+CAPTION_REACH = 24.0
+
+# A caption must sit under or over its artifact, not beside it in the
+# next column. True pairs overlap by 0.78 of the caption's width or
+# more.
+CAPTION_X_OVERLAP = 0.5
 
 # Vector artwork smaller than this in either direction is furniture — a
 # rule under a heading, a box around a word, a table's ruling lines — not
@@ -221,6 +245,41 @@ MIN_TABLE_RULES = 2
 # caption, and Box 6 needs it to label the artifact.
 FIGURE_ABSORB_RATIO = 0.7
 
+# A chart's labels do not all sit inside it. matplotlib draws the tick
+# labels, the axis titles and the chart title *outside* the plot frame,
+# so containment alone cannot reach them and "gpt-3.5-base", "0-shot"
+# and "Model" each came back as a BODY region of their own — the same
+# corpus pollution the containment rule was written to stop.
+#
+# A figure is therefore grown to its real extent first: text that all
+# but touches its edge is part of the graphic. Measured on the page of
+# the GPT-4 report where this was found, the furniture sits 4.5 to
+# 11.6 pt from the frame while the nearest thing that is *not* part of
+# the chart — its caption — is 30.3 pt away. Nothing real sits in
+# between, so 12 pt is a safe place to draw the line.
+FIGURE_HALO = 12.0
+
+# Growth only takes in furniture, never prose. Two things mark it, and
+# either is enough:
+#
+#   it is set smaller than the page's body text — a chart's ticks and
+#   axis titles always are, 6 pt against a 9 pt body on the page this
+#   was measured on;
+#
+#   or it is a few words long.
+#
+# Length alone was the first attempt and it was not enough: PyMuPDF
+# returns a chart's whole row of x-axis labels as *one* block, and on a
+# real chart that block runs past a hundred characters —
+# "Anthropic-LM 0-shot Anthropic-LM RLHF gpt-3.5-base 0-shot ..." — so
+# the length test threw it out and the row came back as a paragraph.
+#
+# Size alone is not enough either: "Model" is an axis title set at body
+# size on some charts. Together they cover both, and a paragraph of
+# prose — long *and* at body size — fails both.
+MAX_FIGURE_LABEL_CHARS = 60
+SMALLER_THAN_BODY = 0.95
+
 # A candidate figure with more than this fraction of its area covered by
 # text is not a figure — it is decoration sitting behind prose.
 #
@@ -232,6 +291,28 @@ FIGURE_ABSORB_RATIO = 0.7
 # covers 0.00, so the two separate cleanly. A chart's axis labels take up
 # only a small part of its area, well under this bar.
 MAX_TEXT_COVERAGE = 0.5
+
+# A figure has to contain artwork — something that is not a straight
+# line. A box, a frame, a divider and a table's rules are all furniture,
+# and a cluster made only of those is not a picture of anything.
+#
+# This is what tells a boxed table from a chart, and the two cannot be
+# told apart any other way I could find. Measured on page 10 of the
+# GPT-4 report, which carries both: the table contributes 6 straight
+# lines and *no* other shape, the chart 4 lines and 8 filled bars. Text
+# coverage, the guard that was already there, reads 0.17 against 0.07 —
+# a table is mostly white space between its columns, so it cannot
+# separate them.
+#
+# It matters because the two detectors feed each other: a chart's axes
+# have to be read as part of its drawing for the tick labels outside the
+# frame to be reachable, and a rule inside a figure is then excluded
+# from the table detector. Without this rule a boxed table became a
+# figure and so lost its own rules, and the table vanished.
+def _is_straight_line(box: list[float]) -> bool:
+    """A stroke with no thickness in one direction: a rule or an axis."""
+    return min(box[2] - box[0], box[3] - box[1]) <= MAX_TABLE_RULE_THICKNESS
+
 
 
 def _block_text(block: dict) -> str:
@@ -544,7 +625,36 @@ def merge_equation_fragments(blocks: list[dict]) -> list[dict]:
     return others
 
 
-def table_blocks(page, page_width: float, text_blocks: list[dict]) -> list[dict]:
+def _rule_belongs_to_a_figure(
+    rule: tuple[float, float, float], figures: list[dict]
+) -> bool:
+    """Is this hairline the axis of a chart rather than a table's rule?
+
+    A chart's axes are wide, perfectly horizontal and hairline-thin —
+    indistinguishable from a booktabs rule read on their own. What tells
+    them apart is company: an axis sits inside the drawing its own chart
+    is made of, and a table's rule does not.
+
+    `containment_ratio` cannot answer this, because a rule has zero area.
+    """
+    y, x0, x1 = rule
+    width = x1 - x0
+    for figure in figures:
+        fx0, fy0, fx1, fy1 = figure["bbox"]
+        if not (fy0 <= y <= fy1):
+            continue
+        overlap = min(x1, fx1) - max(x0, fx0)
+        if width > 0 and overlap / width >= 0.9:
+            return True
+    return False
+
+
+def table_blocks(
+    page,
+    page_width: float,
+    text_blocks: list[dict],
+    figures: list[dict] | None = None,
+) -> list[dict]:
     """Find tables from their horizontal rules, as pseudo-blocks.
 
     Returns blocks shaped like images so the rest of the pipeline treats
@@ -552,6 +662,11 @@ def table_blocks(page, page_width: float, text_blocks: list[dict]) -> list[dict]
 
     A group of rules only counts as a table when there is text between
     them — otherwise a page's header and footer rules would qualify.
+
+    `figures` are the vector figures already found on this page. Their
+    axes are hairlines too, and left in the pool they chain onto a real
+    table's rules and drag the region down over the chart — see
+    `_rule_belongs_to_a_figure`.
     """
     rules: list[tuple[float, float, float]] = []  # (y, x0, x1)
     min_width = page_width * MIN_TABLE_RULE_WIDTH_RATIO
@@ -562,6 +677,8 @@ def table_blocks(page, page_width: float, text_blocks: list[dict]) -> list[dict]
         height = float(rect.y1 - rect.y0)
         if width >= min_width and height <= MAX_TABLE_RULE_THICKNESS:
             rules.append((float(rect.y0), float(rect.x0), float(rect.x1)))
+
+    rules = [r for r in rules if not _rule_belongs_to_a_figure(r, figures or [])]
 
     if len(rules) < MIN_TABLE_RULES:
         return []
@@ -609,6 +726,65 @@ def containment_ratio(inner: tuple[float, ...], outer: tuple[float, ...]) -> flo
     return ((ix1 - ix0) * (iy1 - iy0)) / area
 
 
+def _gap(inner: tuple[float, ...], outer: tuple[float, ...]) -> float:
+    """How far `inner` lies outside `outer`, in points. Zero if it
+    overlaps. The larger of the two axes, so a block that is beside the
+    figure *and* above it is measured by the longer reach."""
+    dx = max(outer[0] - inner[2], inner[0] - outer[2], 0.0)
+    dy = max(outer[1] - inner[3], inner[1] - outer[3], 0.0)
+    return max(dx, dy)
+
+
+def grow_figures_to_their_labels(blocks: list[dict]) -> None:
+    """Stretch each figure to take in the text printed against its edge.
+
+    A chart's tick labels and axis titles are drawn outside the plot
+    frame, so the figure PyMuPDF reports stops short of the graphic a
+    reader sees. Growing it first is what lets the containment rule
+    below reach them.
+
+    Grows repeatedly: the x-axis labels bring the frame down far enough
+    that the axis title beneath *them* comes within reach on the next
+    pass. Captions are never taken in, whatever their distance.
+
+    Mutates the figure blocks in place.
+    """
+    figures = [b for b in blocks if b.get("type") == 1]
+    # Measured here rather than taken from the caller: the pipeline's
+    # body size is computed *after* absorption, on purpose, so that a
+    # chart's small labels cannot drag it down.
+    body_size = _page_body_size(blocks)
+
+    def is_furniture(block: dict) -> bool:
+        text = _block_text(block)
+        if not text or CAPTION_RE.match(text):
+            return False
+        size = _block_font_size(block)
+        if size is not None and size < body_size * SMALLER_THAN_BODY:
+            return True
+        return len(text) <= MAX_FIGURE_LABEL_CHARS
+
+    candidates = [b for b in blocks if b.get("type") == 0 and is_furniture(b)]
+    if not figures or not candidates:
+        return
+
+    growing = True
+    while growing:
+        growing = False
+        for figure in figures:
+            box = list(figure["bbox"])
+            for block in candidates:
+                bbox = block["bbox"]
+                if containment_ratio(bbox, box) >= FIGURE_ABSORB_RATIO:
+                    continue  # already inside; nothing to stretch to
+                if _gap(bbox, box) > FIGURE_HALO:
+                    continue
+                box[0], box[1] = min(box[0], bbox[0]), min(box[1], bbox[1])
+                box[2], box[3] = max(box[2], bbox[2]), max(box[3], bbox[3])
+                growing = True
+            figure["bbox"] = tuple(box)
+
+
 def absorb_text_into_figures(blocks: list[dict]) -> list[dict]:
     """Fold a figure's own labels into the figure.
 
@@ -620,6 +796,8 @@ def absorb_text_into_figures(blocks: list[dict]) -> list[dict]:
     figures = [b for b in blocks if b.get("type") == 1]
     if not figures:
         return blocks
+
+    grow_figures_to_their_labels(blocks)
 
     kept: list[dict] = []
     for block in blocks:
@@ -646,6 +824,54 @@ def absorb_text_into_figures(blocks: list[dict]) -> list[dict]:
             host.setdefault("absorbed_text", []).append(text)
 
     return kept
+
+
+def label_artifacts_from_captions(blocks: list[dict]) -> None:
+    """Let each caption say what the thing beside it is.
+
+    Everything else in this module infers an artifact's kind from how it
+    is drawn, which is guesswork next to what the author wrote. "Table
+    4:" printed under a box settles it, and it settles cases the
+    drawing cannot: a table shipped as a screenshot has no rules to
+    read, and comes back a figure until its caption is consulted.
+
+    Captions are paired to artifacts nearest-first, each caption and
+    each artifact used once. An artifact with no caption keeps whatever
+    the geometry decided — this corrects a label, it does not replace
+    the detector.
+
+    Mutates the artifact blocks in place.
+    """
+    artifacts = [b for b in blocks if b.get("type") == 1]
+    captions = [
+        b for b in blocks if b.get("type") == 0 and CAPTION_RE.match(_block_text(b))
+    ]
+    if not artifacts or not captions:
+        return
+
+    pairs: list[tuple[float, int, int]] = []
+    for ci, caption in enumerate(captions):
+        cx0, cy0, cx1, cy1 = caption["bbox"]
+        width = max(cx1 - cx0, 1.0)
+        for ai, artifact in enumerate(artifacts):
+            ax0, ay0, ax1, ay1 = artifact["bbox"]
+            if (min(cx1, ax1) - max(cx0, ax0)) / width < CAPTION_X_OVERLAP:
+                continue
+            gap = max(ay0 - cy1, cy0 - ay1, 0.0)
+            if gap <= CAPTION_REACH:
+                pairs.append((gap, ci, ai))
+
+    used_captions: set[int] = set()
+    used_artifacts: set[int] = set()
+    for _, ci, ai in sorted(pairs):
+        if ci in used_captions or ai in used_artifacts:
+            continue
+        used_captions.add(ci)
+        used_artifacts.add(ai)
+        text = _block_text(captions[ci])
+        artifacts[ai]["region_kind"] = (
+            "table" if TABLE_CAPTION_RE.match(text) else "figure"
+        )
 
 
 def text_coverage_ratio(rect: list[float], text_blocks: list[dict]) -> float:
@@ -681,21 +907,28 @@ def vector_figure_blocks(page, text_blocks: list[dict] | None = None) -> list[di
     like an image block so the rest of the pipeline treats it as one.
 
     `text_blocks` are the page's text blocks. A merged candidate sitting
-    mostly under text is discarded — see MAX_TEXT_COVERAGE.
-
-    Known limitation: a ruled table merges into a single box and is
-    labelled FIGURE, because telling the two apart needs the ruling-line
-    analysis that belongs with Box 6.
+    mostly under text is discarded — see MAX_TEXT_COVERAGE. That check
+    is also what keeps a ruled table from coming back as a figure as
+    well as a table: a table is dense with text, a chart is not.
     """
     text_blocks = text_blocks or []
     rects: list[list[float]] = []
+    artwork: list[list[float]] = []
     for drawing in page.get_drawings():
         r = drawing["rect"]
-        if r.is_empty or r.is_infinite:
+        if r.is_infinite:
             continue
-        rects.append([float(r.x0), float(r.y0), float(r.x1), float(r.y1)])
+        box = [float(r.x0), float(r.y0), float(r.x1), float(r.y1)]
+        # A rule or an axis has zero area, so `is_empty` is true for it,
+        # but it is still part of the drawing. Skipping those left a
+        # chart's bounding box at the edge of its *bars* instead of its
+        # axes, which is both wrong on its own terms and the reason the
+        # tick labels outside the frame could not be reached.
+        rects.append(box)
+        if not _is_straight_line(box):
+            artwork.append(box)
 
-    if not rects:
+    if not rects or not artwork:
         return []
 
     # Merge repeatedly until nothing else touches: one pass is not enough,
@@ -728,6 +961,7 @@ def vector_figure_blocks(page, text_blocks: list[dict] | None = None) -> list[di
         if (r[2] - r[0]) >= MIN_FIGURE_SIDE
         and (r[3] - r[1]) >= MIN_FIGURE_SIDE
         and text_coverage_ratio(r, text_blocks) <= MAX_TEXT_COVERAGE
+        and any(containment_ratio(a, r) >= 0.9 for a in artwork)
     ]
 
 
@@ -832,13 +1066,16 @@ def extract_regions(pdf_path: Path, paper_id: str) -> list[LayoutRegion]:
                 for b in page_dict.get("blocks", [])
                 if b.get("type") == 1 or _block_text(b)
             ]
-            blocks.extend(vector_figure_blocks(page, text_blocks))
-            blocks.extend(table_blocks(page, page_width, text_blocks))
+            figures = vector_figure_blocks(page, text_blocks)
+            blocks.extend(figures)
+            blocks.extend(table_blocks(page, page_width, text_blocks, figures))
             if not blocks:
                 continue
 
             blocks = merge_equation_fragments(blocks)
             blocks = absorb_text_into_figures(blocks)
+            # last word on figure-vs-table, after the boxes are final
+            label_artifacts_from_captions(blocks)
             body_size = _page_body_size(blocks)
             gutters = find_gutters(blocks, page_width)
             columns = columns_from_gutters(gutters, page_width)

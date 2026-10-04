@@ -26,8 +26,14 @@ output) all build against.
   equation) and reconstructs reading order, so a two-column paper comes
   out in the order a human reads it instead of interleaved across the
   gutter. Figures, tables and equations absorb the text inside them, so
-  axis labels and table cells do not scatter into the prose. Pure
-  geometry and font names — no model, no GPU.
+  axis labels and table cells do not scatter into the prose — and a
+  figure is grown to its real extent first, since a chart's ticks and
+  axis titles are printed outside its plot frame. Charts and tables are
+  told apart by artwork: a cluster of straight lines is a frame or a set
+  of rules, a figure has a filled shape or a curve in it — and then by
+  their caption, which overrules the drawing, so a table pasted in as a
+  screenshot is still filed as a table. Pure geometry, font names and
+  the author's own labels — no model, no GPU.
 - `scripts/inspect_fonts.py` — diagnostic. Prints every block on a page
   with the fonts it uses. The equation rules were built from its output
   on a real paper rather than from a guess.
@@ -38,6 +44,21 @@ output) all build against.
 - `api/gallery.py` — contact-sheet view of every rendered page, for
   showing Box 2's output in one screen at a progress review. A demo
   surface only; Members 2/3/4 read the JSON.
+- `scripts/check_corpus.py` — runs Box 3 over a folder of papers and
+  prints the pages that look wrong. Every threshold in `layout.py` was
+  measured on one or two real pages, which is the honest way to pick a
+  number but is not evidence that it holds across a corpus. This is how
+  that gets checked:
+
+  ```bash
+  python scripts/check_corpus.py data/raw
+  ```
+
+  It does not know the right answer. It looks for the shapes every bug
+  so far produced — short text scattered around a figure, a table and a
+  figure overlapping, a page with no text layer — and names the pages
+  worth opening in the `/layout` overlay. `tests/test_check_corpus.py`
+  reintroduces each of those bugs and asserts it still notices.
 - `scripts/generate_sample_pdf.py` — makes a synthetic test PDF so you
   can run everything before a real paper corpus is collected.
 - `tests/` — pytest suite covering the schema, the baseline extractor,
