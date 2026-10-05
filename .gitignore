@@ -1,0 +1,23 @@
+# Python
+__pycache__/
+*.pyc
+.pytest_cache/
+*.egg-info/
+.venv/
+venv/
+
+# Data — never commit real papers, PDFs, or generated artifacts
+data/raw/*
+data/processed/*
+!data/raw/.gitkeep
+!data/processed/.gitkeep
+*.pdf
+
+# Secrets / env
+.env
+*.key
+
+# OS / editor
+.DS_Store
+.vscode/
+.idea/
