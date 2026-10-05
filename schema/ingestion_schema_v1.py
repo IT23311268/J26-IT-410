@@ -105,10 +105,15 @@ class Artifact(BaseModel):
 class PageImage(BaseModel):
     """A rendered bitmap of one PDF page — pipeline Box 2.
 
-    Layout region detection (Box 3), figure cropping (Box 6) and the
-    ColPali visual retriever (Box 8) all reason over pixels, not PDF
-    drawing operators. So each page is rasterised once, here, and every
-    later stage reuses the same image instead of re-rendering.
+    Figure cropping (Box 6), the ColPali visual retriever (Box 8) and
+    the /layout overlay all work on pixels, so each page is rasterised
+    once here and every later stage reuses the same image instead of
+    re-rendering it.
+
+    Box 3 is *not* on that list. Layout detection reads the PDF's own
+    fonts, block boxes and vector paths — none of which survives
+    rasterisation. The image is how a human sees what Box 3 decided,
+    not how Box 3 decides it.
     """
 
     page_index: int = Field(..., ge=0, description="0-indexed page number")
