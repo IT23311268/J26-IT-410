@@ -493,6 +493,21 @@ scores 100% and 75%; the layout-aware run scores 0% and 0%. The baseline
 is re-run live rather than stored, so it always reflects the baseline as
 it stands today — a stored copy would quietly flatter us.
 
+**Q: The two paths use different chunk sizes. Isn't that comparison
+rigged?**
+It would be if I compared counts, which is why the page compares
+percentages and says so on it. I measured the concern rather than
+arguing about it: running the baseline at 400, 800, 1200, 2000 and 4000
+characters gives 35, 18, 12, 7 and 4 chunks, and the share starting
+mid-word stays between 67% and 86% with no trend. A fixed-size cut
+lands at an arbitrary position whatever size you pick, and most
+characters sit inside a word, so the rate is a property of the method
+rather than of the setting.
+
+The section comparison is not affected at all: flat text has no
+sections at any chunk size, so it is 100% against 0% however either
+side is cut.
+
 **Q: What is next?**
 Box 6, artifact extraction — cropping each figure out of the page image
 Box 2 rendered, using the bounding box Box 3 found.

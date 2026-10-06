@@ -30,6 +30,8 @@ from __future__ import annotations
 
 import html
 
+from ingestion.baseline_extractor import DEFAULT_CHUNK_CHARS, DEFAULT_CHUNK_OVERLAP
+from ingestion.chunking import TARGET_CHUNK_CHARS
 from schema.ingestion_schema_v1 import Chunk, IngestionResult
 
 _STYLES = """
@@ -188,17 +190,23 @@ def render_comparison(
         f"<h1>{html.escape(title)}</h1>"
         "<p class='sub'>The same PDF through both paths. Left is what you get "
         "without layout understanding; right is this component. Showing the "
-        f"first {limit} chunks of each.</p>"
+        f"first {limit} chunks of each.<br>"
+        "The two paths use different chunk sizes, so compare the "
+        "<strong>percentages</strong>, not the counts: a fixed-size cut lands "
+        "mid-word at about the same rate whatever size you choose, and flat "
+        "text has no sections at any size.</p>"
         f'<div class="stats">{stats}</div>'
         '<div class="cols">'
         + _column(
             "Baseline",
-            "Flat text, cut every N characters.",
+            f"Flat text, cut every {DEFAULT_CHUNK_CHARS} characters with "
+            f"{DEFAULT_CHUNK_OVERLAP} of overlap.",
             b_chunks,
         )
         + _column(
             "Layout-aware",
-            "Reading order recovered, cut at section and paragraph boundaries.",
+            f"Reading order recovered, cut at section and paragraph "
+            f"boundaries, targeting {TARGET_CHUNK_CHARS} characters.",
             l_chunks,
         )
         + "</div></div></body></html>"
