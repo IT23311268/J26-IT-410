@@ -22,7 +22,7 @@ from typing import Optional
 
 from pydantic import BaseModel, Field
 
-SCHEMA_VERSION = "1.3.0"
+SCHEMA_VERSION = "1.4.0"
 # Changelog
 #   1.0.0  initial contract (paper, chunks, artifacts)
 #   1.1.0  added PageImage + IngestionResult.pages (additive — 1.0.0
@@ -31,6 +31,9 @@ SCHEMA_VERSION = "1.3.0"
 #   1.3.0  added RegionType.EQUATION. A new enum *value*, so code that
 #          switches on region_type keeps working but will see a label it
 #          has not met before — treat an unknown one as BODY.
+#   1.4.0  added LayoutRegion.section and .section_title_raw (Box 4).
+#          Additive: both default to UNKNOWN / "" on a run that stops at
+#          Box 3, so nothing written against 1.3.0 changes behaviour.
 
 
 class SectionType(str, Enum):
@@ -181,6 +184,17 @@ class LayoutRegion(BaseModel):
     )
     font_size: Optional[float] = Field(
         None, description="Dominant font size in points; None for FIGURE"
+    )
+    section: SectionType = Field(
+        SectionType.UNKNOWN,
+        description="Which section of the paper this region sits in — Box 4. "
+        "UNKNOWN on a run that stopped at Box 3.",
+    )
+    section_title_raw: str = Field(
+        "",
+        description="The heading that opened this region's section, exactly "
+        "as printed ('2. Method'). Kept beside the classified `section` so a "
+        "misclassification loses nothing.",
     )
 
 

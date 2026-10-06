@@ -9,6 +9,7 @@ file, because api/main.py only calls save() / load() / exists().
 from __future__ import annotations
 
 import os
+import shutil
 import tempfile
 from pathlib import Path
 
@@ -17,6 +18,12 @@ from pydantic import ValidationError
 from schema.ingestion_schema_v1 import IngestionResult
 
 PROCESSED_DIR = Path(__file__).resolve().parent.parent / "data" / "processed"
+
+# The uploaded PDF, kept so a stage can be re-run without the file
+# being uploaded again. /compare needs it to run the baseline a
+# second time, and it is what makes a re-ingest after a bug fix a
+# one-line script rather than a trip through the browser.
+RAW_DIR = Path(__file__).resolve().parent.parent / "data" / "raw"
 
 
 class CorruptRecord(Exception):
@@ -96,3 +103,17 @@ def list_paper_ids() -> list[str]:
     # ".write-*.tmp" files never match "*.json", so an in-flight save is
     # invisible here.
     return sorted(p.stem for p in PROCESSED_DIR.glob("*.json"))
+
+
+def save_source(paper_id: str, pdf_path: Path) -> Path:
+    """Keep the uploaded PDF under its paper_id."""
+    RAW_DIR.mkdir(parents=True, exist_ok=True)
+    target = RAW_DIR / f"{paper_id}.pdf"
+    shutil.copyfile(pdf_path, target)
+    return target
+
+
+def source_path(paper_id: str) -> Path | None:
+    """Where this paper's PDF was kept, or None if it predates that."""
+    candidate = RAW_DIR / f"{paper_id}.pdf"
+    return candidate if candidate.exists() else None

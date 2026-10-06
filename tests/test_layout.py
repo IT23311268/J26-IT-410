@@ -508,3 +508,80 @@ def test_containment_ratio():
     assert containment_ratio((10, 10, 20, 20), outer) == 1.0  # fully inside
     assert containment_ratio((200, 200, 210, 210), outer) == 0.0  # fully outside
     assert containment_ratio((90, 0, 110, 100), outer) == pytest.approx(0.5)  # half in
+
+
+# --------------------------------------------------------------------------
+# running heads and page numbers
+# --------------------------------------------------------------------------
+#
+# Found on page 99 of the GPT-4 report: a centred "100" in the bottom
+# margin came back as a HEADING. It is short, and at 10.9pt against a
+# 9pt body it clears the size test, so both halves of the heading rule
+# said yes.
+#
+# It did not break Box 4 — "100" classifies as UNKNOWN, so the section
+# did not move — but it is a region of pure furniture in a list that
+# Box 5 turns into chunks, and "100" is not a chunk anybody should
+# retrieve.
+#
+# The rule: a block whose text is only a number, sitting in the top or
+# bottom margin, is page furniture. Both halves are needed. A number
+# alone is never a heading anywhere, but a stray figure mid-page could
+# be an equation number or a table remnant, and dropping content is
+# worse than mislabelling furniture.
+
+
+def _page_number_pdf(path: Path, number: str = "100") -> Path:
+    from reportlab.lib.pagesizes import letter
+    from reportlab.pdfgen import canvas
+
+    c = canvas.Canvas(str(path), pagesize=letter)  # 612 x 792
+    c.setFont("Helvetica-Bold", 13)
+    c.drawString(72, 720, "3. Method")
+    c.setFont("Helvetica", 9)
+    y = 690
+    for _ in range(6):
+        c.drawString(72, y, "We fine-tuned the generator on the training split.")
+        y -= 14
+    c.setFont("Helvetica", 10.9)
+    c.drawCentredString(306, 40, number)  # bottom margin, centred
+    c.showPage()
+    c.save()
+    return path
+
+
+@pytest.mark.parametrize("number", ["100", "7", "iv", "XII", "- 42 -"])
+def test_a_page_number_is_not_a_region(tmp_path: Path, number: str):
+    regions = extract_regions(_page_number_pdf(tmp_path / "pn.pdf", number), "pn")
+    assert not any(r.text.strip() == number for r in regions)
+
+
+def test_the_real_heading_on_that_page_survives(tmp_path: Path):
+    regions = extract_regions(_page_number_pdf(tmp_path / "pn.pdf"), "pn")
+    headings = [r for r in regions if r.region_type == RegionType.HEADING]
+    assert [h.text for h in headings] == ["3. Method"]
+
+
+def test_the_body_text_on_that_page_survives(tmp_path: Path):
+    regions = extract_regions(_page_number_pdf(tmp_path / "pn.pdf"), "pn")
+    body = [r for r in regions if r.region_type == RegionType.BODY]
+    assert len(body) == 6
+
+
+def test_a_number_in_the_middle_of_the_page_is_kept(tmp_path: Path):
+    """Only the margins are furniture. A number in the text block could
+    be an equation number or a stray table cell, and losing content is
+    worse than keeping a region nobody wants."""
+    from reportlab.lib.pagesizes import letter
+    from reportlab.pdfgen import canvas
+
+    path = tmp_path / "mid.pdf"
+    c = canvas.Canvas(str(path), pagesize=letter)
+    c.setFont("Helvetica", 10)
+    c.drawString(72, 500, "Equation 3 is given below.")
+    c.drawString(520, 460, "(3)")  # an equation number, mid-page
+    c.showPage()
+    c.save()
+
+    regions = extract_regions(path, "mid")
+    assert any("(3)" in r.text for r in regions)
