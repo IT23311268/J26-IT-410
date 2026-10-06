@@ -39,6 +39,7 @@ from api.gallery import render_gallery
 from api.overlay import render_overlay
 from ingestion.baseline_extractor import extract_baseline
 from ingestion.layout import extract_regions
+from ingestion.sections import assign_sections
 from ingestion.rasterise import DEFAULT_DPI, rasterise_pdf, resolve_image_path
 from schema.ingestion_schema_v1 import SCHEMA_VERSION, IngestionResult, PageImage
 
@@ -97,7 +98,11 @@ async def ingest(
 
         if detect_layout:
             try:
-                result.regions = extract_regions(tmp_path, result.paper.paper_id)
+                # Box 3 finds the regions, Box 4 says which section each
+                # one sits in. Two calls, so a failure in either is
+                # obvious and Box 3 stays usable on its own.
+                regions = extract_regions(tmp_path, result.paper.paper_id)
+                result.regions = assign_sections(regions)
             except Exception as exc:  # noqa: BLE001
                 raise HTTPException(
                     status_code=400, detail=f"Failed to detect layout: {exc}"

@@ -13,7 +13,7 @@ engineering decisions in it, so it attracts the most questions.
 > produces the structured JSON that Members 2, 3 and 4 build on. Right
 > now it does three things: it accepts and stores the PDF, it renders
 > every page to an image, and it detects the layout regions on each page
-> and recovers the correct reading order. Everything is tested — 168
+> and recovers the correct reading order. Everything is tested — 221
 > tests — and it runs as a FastAPI service you can try in a browser."
 
 ---
@@ -302,7 +302,7 @@ a known limit, and it is the honest place for the vision model in Box 8
 to take over.
 
 **Q: How do you know it works?**
-Two ways. There are 168 tests, including one that asserts the four marked
+Two ways. There are 221 tests, including one that asserts the four marked
 paragraphs of a synthetic two-column paper come out in the order
 ALPHA, BETA, GAMMA, DELTA — and a second test that confirms the naive
 top-to-bottom order *would* have been wrong, so the first test cannot
@@ -351,7 +351,7 @@ multimodal.
 ## Questions about engineering practice
 
 **Q: How do you know you have not broken anything?**
-168 tests, run before every commit. Eight of them exist because of a bug
+221 tests, run before every commit. Eight of them exist because of a bug
 I hit: the dev server's auto-reloader restarted the process while a
 record was being written and left a zero-byte file, so every later read
 of that paper failed. I fixed it by writing to a temporary file and
@@ -362,11 +362,92 @@ either the old complete file or the new one, never a half-written one.
 Git. I work on `feature/m1-ingestion` and push there; the schema goes to
 `main` so the others build against the same contract.
 
+---
+
+## Box 4 — section identification
+
+**Q: What does this stage add?**
+The section each region belongs to. Box 3 says a block is BODY; Box 4
+says it is BODY *in the Method*. That label goes on every region and
+from there onto every chunk.
+
+**Q: Why does it matter? It sounds like metadata.**
+Because the same sentence means different things in different
+sections. "BM25 outperforms dense retrieval on short queries" in
+Related Work is somebody else's finding being cited; in Results it is
+this paper's own. Member 2 verifies claims against this text and
+cannot tell those apart without the label — which is most of the point
+of grounding verification. Box 5 needs it too: a chunk that straddles
+a section boundary is half Method and half Results, and useless.
+
+**Q: How do you classify a heading?**
+Keywords, with the number stripped first — a heading's number says
+where it sits, never what it is. "2." opens Method in one paper and
+Related Work in another. The keyword must then be at the *start* of
+what is left.
+
+**Q: Why at the start, rather than anywhere in the heading?**
+Because anywhere was my first version and it was wrong. "Limitations
+of Prior Methods" came back METHOD — it is a subsection discussing
+other people's work and merely contains the word. A real heading opens
+with its own word.
+
+**Q: Papers do not say "Method". How do you catch "Our Approach"?**
+A list of the wordings papers really use: approach, model,
+architecture, implementation, experimental setup for METHOD;
+evaluation, experiments, findings for RESULTS. Plus the leading
+"our"/"the" comes off, so "Our Approach" and "The Proposed Model" both
+land.
+
+**Q: What about a heading that names two sections — "Results and
+Discussion"?**
+Those cannot be decided by what is at the start, so they fall through
+to the order of the keyword list. DISCUSSION sits last on purpose: a
+heading pairing it with Results or Conclusion is opening a section
+whose substance is the other one. Four of those combinations are
+pinned by tests, so reshuffling the list fails there rather than
+silently relabelling a corpus.
+
+**Q: What happens to a heading you cannot classify?**
+It returns UNKNOWN, and UNKNOWN deliberately does *not* start a new
+section. "3.2 Generator: BART" is a subsection of the Method, and
+letting it move us would drop the rest of the Method into a section
+that does not exist. Only a recognised heading moves us — which is
+what makes UNKNOWN the useful answer rather than a gap.
+
+**Q: A page number came back as a heading. How did that happen?**
+It is short, and at 10.9pt against a 9pt body it cleared the size test,
+so both halves of the heading rule said yes. I found it in the JSON on
+page 99 of the GPT-4 report: a centred "100" labelled HEADING.
+
+Box 4 absorbed it without damage — "100" classifies as UNKNOWN, so the
+section tree did not move, which is the UNKNOWN rule earning its keep a
+second time. But Box 5 turns regions into chunks, and "100" is not
+something anybody should retrieve.
+
+A block whose text is only a number, sitting in the top or bottom
+margin, is now dropped as page furniture. Both halves are needed: a
+number alone is never a heading wherever it sits, but a stray figure in
+the text block could be an equation number or a table remnant, and
+dropping content is worse than mislabelling furniture. Measured on that
+page, the number sits 37pt from the foot while the page's real heading
+starts 58pt from the head, so a one-inch margin separates them
+comfortably.
+
+**Q: And the text before the first heading?**
+TITLE — the title, the authors, the affiliations. That is where they
+belong, and it keeps them out of the abstract.
+
+**Q: Did the schema change?**
+Yes, 1.3.0 → 1.4.0: `LayoutRegion.section` and `.section_title_raw`.
+Additive, as always — both default to UNKNOWN and "" on a run that
+stops at Box 3, so nothing written against 1.3.0 changes behaviour.
+The raw heading is kept beside the classified label so a
+misclassification loses nothing.
+
 **Q: What is next?**
-Box 4, section identification — grouping the detected headings into an
-IMRaD section tree, so chunks can be tagged with the section they came
-from. Then Box 5, chunking that respects those section boundaries
-instead of fixed-size windows.
+Box 5, chunking that respects those section boundaries instead of
+fixed-size windows.
 
 ---
 

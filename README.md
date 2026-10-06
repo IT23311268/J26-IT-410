@@ -44,6 +44,13 @@ output) all build against.
 - `api/gallery.py` — contact-sheet view of every rendered page, for
   showing Box 2's output in one screen at a progress review. A demo
   surface only; Members 2/3/4 read the JSON.
+- `ingestion/sections.py` — **pipeline Box 4.** Reads the HEADING
+  regions, works out which section of the paper each one opens, and
+  tags every region with the section it sits in. The same sentence
+  means different things in Related Work and in Results, and Member 2
+  cannot tell them apart without this label. Keyword order decides a
+  heading that names two sections at once, so the order of
+  `SECTION_KEYWORDS` is pinned by tests.
 - `scripts/check_corpus.py` — runs Box 3 over a folder of papers and
   prints the pages that look wrong. Every threshold in `layout.py` was
   measured on one or two real pages, which is the honest way to pick a
@@ -136,8 +143,8 @@ The eight boxes from the component diagram in the proposal:
 | 1 | PDF input | ✅ `POST /ingest` |
 | 2 | Page rasterisation | ✅ `ingestion/rasterise.py` |
 | 3 | Layout region detection | ✅ `ingestion/layout.py` |
-| 4 | Section identification | ⬜ next |
-| 5 | Section-aware chunking | ⬜ |
+| 4 | Section identification | ✅ `ingestion/sections.py` |
+| 5 | Section-aware chunking | ⬜ next |
 | 6 | Artifact extraction | ⬜ |
 | 7 | Artifact binding | ⬜ after PP1 |
 | 8 | Chunk + image store | ⬜ after PP1 (needs GPU for ColPali) |

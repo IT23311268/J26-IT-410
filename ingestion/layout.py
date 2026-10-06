@@ -292,6 +292,26 @@ SMALLER_THAN_BODY = 0.95
 # only a small part of its area, well under this bar.
 MAX_TEXT_COVERAGE = 0.5
 
+# A page number in the margin is furniture, not content.
+#
+# Found on page 99 of the GPT-4 report: a centred "100" in the bottom
+# margin came back as a HEADING. It is short, and at 10.9pt against a
+# 9pt body it clears the size test, so both halves of the heading rule
+# said yes. It did not break Box 4 — "100" classifies as UNKNOWN, so the
+# section tree did not move — but Box 5 turns regions into chunks, and
+# "100" is not something anybody should retrieve.
+#
+# Both conditions are needed. A number on its own is never a heading
+# wherever it sits, but a stray figure in the text block could be an
+# equation number or a table remnant, and dropping content is worse than
+# mislabelling furniture. In the margin it is unambiguous: measured on
+# that page, the number sits 37pt from the foot while the page's real
+# heading starts 58pt from the head.
+PAGE_MARGIN = 72.0  # points; one inch, the usual page margin
+
+# "100", "7", "iv", "XII", "- 42 -", "[3]" — a number, however dressed.
+PAGE_NUMBER_RE = re.compile(r"^[\s\-–—\[\(]*([0-9]+|[ivxlcIVXLC]+)[\s\-–—\]\)\.]*$")
+
 # A figure has to contain artwork — something that is not a straight
 # line. A box, a frame, a divider and a table's rules are all furniture,
 # and a cluster made only of those is not a picture of anything.
@@ -313,6 +333,21 @@ def _is_straight_line(box: list[float]) -> bool:
     """A stroke with no thickness in one direction: a rule or an axis."""
     return min(box[2] - box[0], box[3] - box[1]) <= MAX_TABLE_RULE_THICKNESS
 
+
+
+def is_page_furniture(block: dict, page_height: float) -> bool:
+    """Is this block a page number sitting in a margin?
+
+    See PAGE_MARGIN. Only text blocks are considered — a figure in the
+    margin is still a figure.
+    """
+    if block.get("type") != 0:
+        return False
+    if not PAGE_NUMBER_RE.match(_block_text(block)):
+        return False
+
+    _, y0, _, y1 = block["bbox"]
+    return y1 <= PAGE_MARGIN or y0 >= page_height - PAGE_MARGIN
 
 
 def _block_text(block: dict) -> str:
@@ -1058,13 +1093,22 @@ def extract_regions(pdf_path: Path, paper_id: str) -> list[LayoutRegion]:
         for page_index, page in enumerate(doc):
             page_dict = page.get_text("dict")
             page_width = float(page_dict.get("width") or page.rect.width)
-            text_blocks = [
-                b for b in page_dict.get("blocks", []) if b.get("type") == 0 and _block_text(b)
-            ]
-            blocks = [
+            page_height = float(page_dict.get("height") or page.rect.height)
+
+            # Page numbers come out before anything else measures the
+            # page: they would otherwise read as headings, and they also
+            # skew the body-size median on a short page.
+            page_blocks = [
                 b
                 for b in page_dict.get("blocks", [])
-                if b.get("type") == 1 or _block_text(b)
+                if not is_page_furniture(b, page_height)
+            ]
+
+            text_blocks = [
+                b for b in page_blocks if b.get("type") == 0 and _block_text(b)
+            ]
+            blocks = [
+                b for b in page_blocks if b.get("type") == 1 or _block_text(b)
             ]
             figures = vector_figure_blocks(page, text_blocks)
             blocks.extend(figures)
