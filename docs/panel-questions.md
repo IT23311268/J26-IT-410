@@ -13,7 +13,7 @@ engineering decisions in it, so it attracts the most questions.
 > produces the structured JSON that Members 2, 3 and 4 build on. Right
 > now it does three things: it accepts and stores the PDF, it renders
 > every page to an image, and it detects the layout regions on each page
-> and recovers the correct reading order. Everything is tested — 221
+> and recovers the correct reading order. Everything is tested — 254
 > tests — and it runs as a FastAPI service you can try in a browser."
 
 ---
@@ -302,7 +302,7 @@ a known limit, and it is the honest place for the vision model in Box 8
 to take over.
 
 **Q: How do you know it works?**
-Two ways. There are 221 tests, including one that asserts the four marked
+Two ways. There are 254 tests, including one that asserts the four marked
 paragraphs of a synthetic two-column paper come out in the order
 ALPHA, BETA, GAMMA, DELTA — and a second test that confirms the naive
 top-to-bottom order *would* have been wrong, so the first test cannot
@@ -351,7 +351,7 @@ multimodal.
 ## Questions about engineering practice
 
 **Q: How do you know you have not broken anything?**
-221 tests, run before every commit. Eight of them exist because of a bug
+254 tests, run before every commit. Eight of them exist because of a bug
 I hit: the dev server's auto-reloader restarted the process while a
 record was being written and left a zero-byte file, so every later read
 of that paper failed. I fixed it by writing to a temporary file and
@@ -445,9 +445,57 @@ stops at Box 3, so nothing written against 1.3.0 changes behaviour.
 The raw heading is kept beside the classified label so a
 misclassification loses nothing.
 
+---
+
+## Box 5 — section-aware chunking
+
+**Q: What is a chunk, and why not just cut every thousand characters?**
+A chunk is the unit Members 2 and 3 retrieve. Cutting every N
+characters is what the baseline does, and on a real paper the cut lands
+mid-word: "…interleaves the column | s and shreds every sentence…".
+Three of the four baseline chunks on my test paper open in the middle of
+a word. It also puts the end of the Method and the start of the Results
+in one chunk, so nothing downstream can say which section a retrieved
+passage came from.
+
+**Q: Where do you cut instead?**
+Two boundaries and nowhere else. A section boundary, always — a chunk is
+never half Method and half Results. And a region boundary when a section
+runs longer than one chunk should be; a region is a paragraph, so the
+cut falls between paragraphs.
+
+**Q: How long is a chunk?**
+A target of 1200 characters, about 300 tokens. Characters rather than
+tokens because tokenising here would tie this stage to one model's
+tokeniser and Members 2 and 3 may not use the same one. It is a target,
+not a limit: a single paragraph longer than it comes out whole, because
+splitting it would put the cut inside a sentence, which is the thing
+this stage exists to prevent.
+
+**Q: What happens to figures and tables?**
+They are not chunks. A figure is an Artifact — Box 6 crops it, Box 7
+binds it back to the chunks that discuss it. Retrieving one as prose
+would return an empty passage. Captions *are* chunks, but their own:
+retrieving "Figure 7 shows accuracy on TruthfulQA" should not drag a
+page of unrelated Method text with it.
+
+**Q: Captions are short. Doesn't your minimum-size rule eat them?**
+It did. A one-line paragraph or a stray heading is folded into the chunk
+before it — it matches nothing alone and dilutes the corpus — and the
+first version of that rule swallowed every caption, which is exactly the
+coupling the caption chunk exists to avoid. Captions are now exempt.
+
+**Q: Can you show the improvement, not just describe it?**
+`/compare/{paper_id}`. The same PDF through both paths, side by side,
+with the two numbers that carry the claim: chunks with no section, and
+chunks starting mid-word. On my two-column test paper the baseline
+scores 100% and 75%; the layout-aware run scores 0% and 0%. The baseline
+is re-run live rather than stored, so it always reflects the baseline as
+it stands today — a stored copy would quietly flatter us.
+
 **Q: What is next?**
-Box 5, chunking that respects those section boundaries instead of
-fixed-size windows.
+Box 6, artifact extraction — cropping each figure out of the page image
+Box 2 rendered, using the bounding box Box 3 found.
 
 ---
 

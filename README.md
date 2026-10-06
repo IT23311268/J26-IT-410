@@ -51,6 +51,15 @@ output) all build against.
   cannot tell them apart without this label. Keyword order decides a
   heading that names two sections at once, so the order of
   `SECTION_KEYWORDS` is pinned by tests.
+- `ingestion/chunking.py` — **pipeline Box 5.** Cuts the labelled
+  regions into the `Chunk` objects Members 2 and 3 retrieve from. The
+  cut falls at a section boundary always, and at a paragraph boundary
+  when a section runs longer than one chunk — never inside a sentence,
+  which is what the fixed-size baseline gets wrong.
+- `api/compare.py` — **baseline against layout-aware, side by side.**
+  The same PDF through both paths, with the two numbers that carry the
+  claim: how many chunks have no section, and how many start mid-word.
+  Open `/compare/{paper_id}`.
 - `scripts/check_corpus.py` — runs Box 3 over a folder of papers and
   prints the pages that look wrong. Every threshold in `layout.py` was
   measured on one or two real pages, which is the honest way to pick a
@@ -107,8 +116,10 @@ Open **http://127.0.0.1:8000/docs** — interactive Swagger UI. Try
 
 Then, with a `paper_id` from `http://127.0.0.1:8000/papers`:
 
-- `http://127.0.0.1:8000/gallery/{paper_id}` — **every page at once.** The
-  view to open in a progress review.
+- `http://127.0.0.1:8000/compare/{paper_id}` — **baseline against
+  layout-aware.** The view to open at a progress review: it is the only
+  one that shows the pipeline is *better* rather than merely working.
+- `http://127.0.0.1:8000/gallery/{paper_id}` — every page at once.
 - `http://127.0.0.1:8000/paper/{paper_id}/page/0` — one page, full size.
 - `http://127.0.0.1:8000/paper/{paper_id}/page/0/layout` — **the same page
   with Box 3's detected regions drawn on it**, numbered in reading order.
@@ -144,8 +155,8 @@ The eight boxes from the component diagram in the proposal:
 | 2 | Page rasterisation | ✅ `ingestion/rasterise.py` |
 | 3 | Layout region detection | ✅ `ingestion/layout.py` |
 | 4 | Section identification | ✅ `ingestion/sections.py` |
-| 5 | Section-aware chunking | ⬜ next |
-| 6 | Artifact extraction | ⬜ |
+| 5 | Section-aware chunking | ✅ `ingestion/chunking.py` |
+| 6 | Artifact extraction | ⬜ next |
 | 7 | Artifact binding | ⬜ after PP1 |
 | 8 | Chunk + image store | ⬜ after PP1 (needs GPU for ColPali) |
 

@@ -35,13 +35,20 @@ from fastapi import FastAPI, File, HTTPException, Query, Response, UploadFile
 from fastapi.responses import FileResponse, HTMLResponse, JSONResponse
 
 from api import storage
+from api.compare import render_comparison
 from api.gallery import render_gallery
 from api.overlay import render_overlay
 from ingestion.baseline_extractor import extract_baseline
 from ingestion.layout import extract_regions
+from ingestion.chunking import chunk_regions
 from ingestion.sections import assign_sections
 from ingestion.rasterise import DEFAULT_DPI, rasterise_pdf, resolve_image_path
-from schema.ingestion_schema_v1 import SCHEMA_VERSION, IngestionResult, PageImage
+from schema.ingestion_schema_v1 import (
+    SCHEMA_VERSION,
+    ExtractionMethod,
+    IngestionResult,
+    PageImage,
+)
 
 app = FastAPI(
     title="J26-IT-410 Ingestion Service",
@@ -99,14 +106,27 @@ async def ingest(
         if detect_layout:
             try:
                 # Box 3 finds the regions, Box 4 says which section each
-                # one sits in. Two calls, so a failure in either is
-                # obvious and Box 3 stays usable on its own.
+                # one sits in, Box 5 cuts them into chunks. Separate
+                # calls, so a failure in one is obvious and each stage
+                # stays usable on its own.
                 regions = extract_regions(tmp_path, result.paper.paper_id)
                 result.regions = assign_sections(regions)
+                # The layout-aware chunks replace the baseline's
+                # fixed-size ones. `extraction_method` on the paper says
+                # which path produced them, so the two runs stay
+                # comparable in the same output format.
+                result.chunks = chunk_regions(
+                    result.regions, result.paper.paper_id
+                )
+                result.paper.extraction_method = ExtractionMethod.LAYOUT_AWARE_V1
             except Exception as exc:  # noqa: BLE001
                 raise HTTPException(
                     status_code=400, detail=f"Failed to detect layout: {exc}"
                 ) from exc
+
+        # Keep the PDF: /compare re-runs the baseline from it, and a
+        # re-ingest after a bug fix needs no second upload.
+        storage.save_source(result.paper.paper_id, tmp_path)
 
     storage.save(result)
     return result
@@ -201,6 +221,32 @@ def gallery(paper_id: str) -> HTMLResponse:
     this. Excluded from the OpenAPI schema so it doesn't clutter /docs.
     """
     return HTMLResponse(render_gallery(_load_or_404(paper_id)))
+
+
+@app.get("/compare/{paper_id}", response_class=HTMLResponse, include_in_schema=False)
+def compare(paper_id: str) -> HTMLResponse:
+    """The same PDF through both paths, side by side.
+
+    Every other surface shows the pipeline runs. This one shows it beats
+    the alternative, which is the claim the proposal actually makes. The
+    baseline is re-run here rather than stored, so it always reflects the
+    baseline as it stands today — a stale copy would quietly flatter us.
+    """
+    layout = _load_or_404(paper_id)
+
+    source = storage.source_path(paper_id)
+    if source is None:
+        raise HTTPException(
+            status_code=409,
+            detail=(
+                f"No stored PDF for '{paper_id}', so the baseline cannot be "
+                "re-run. Papers ingested before sources were kept need one "
+                "more trip through POST /ingest."
+            ),
+        )
+
+    baseline = extract_baseline(source)
+    return HTMLResponse(render_comparison(baseline, layout))
 
 
 @app.get("/papers")
