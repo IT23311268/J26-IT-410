@@ -264,3 +264,43 @@ def test_figures_and_captions_are_tagged_too(walked):
     for region in walked:
         if region.region_type in (RegionType.FIGURE, RegionType.CAPTION):
             assert region.section != SectionType.UNKNOWN
+
+
+# --------------------------------------------------------------------------
+# the paper's own title
+# --------------------------------------------------------------------------
+
+from ingestion.sections import MAX_TITLE_CHARS, paper_title  # noqa: E402
+
+
+def test_the_title_comes_off_the_page_not_the_filename(walked):
+    assert paper_title(walked) == "Layout-Aware Ingestion of Scholarly PDFs"
+
+
+def test_a_section_heading_is_never_mistaken_for_the_title(tmp_path: Path):
+    """A paper whose front matter Box 3 did not mark as a heading must
+    return nothing rather than handing back 'Abstract'."""
+    pdf = _paper(
+        tmp_path / "p.pdf",
+        [
+            ("Abstract", True),
+            ("We present a layout-aware ingestion engine.", False),
+            ("1. Introduction", True),
+            ("Parsing a two-column paper naively shreds its sentences.", False),
+        ],
+    )
+    assert paper_title(assign_sections(extract_regions(pdf, "p"))) == ""
+
+
+def test_a_paragraph_is_not_a_title(tmp_path: Path):
+    """A heading rule that fires on a long run of bold text would
+    otherwise put a whole paragraph in the masthead."""
+    pdf = _paper(
+        tmp_path / "p.pdf",
+        [("x" * (MAX_TITLE_CHARS + 40), True), ("Abstract", True), ("Body.", False)],
+    )
+    assert paper_title(assign_sections(extract_regions(pdf, "p"))) == ""
+
+
+def test_no_regions_means_no_title():
+    assert paper_title([]) == ""

@@ -10,11 +10,21 @@ engineering decisions in it, so it attracts the most questions.
 ## The one-minute version
 
 > "My component is the ingestion engine. It takes a reference PDF and
-> produces the structured JSON that Members 2, 3 and 4 build on. Right
-> now it does three things: it accepts and stores the PDF, it renders
-> every page to an image, and it detects the layout regions on each page
-> and recovers the correct reading order. Everything is tested — 254
-> tests — and it runs as a FastAPI service you can try in a browser."
+> produces the structured JSON that Members 2, 3 and 4 build on. Six of
+> the eight boxes in my component diagram are working: it stores the
+> PDF, renders every page to an image, finds the layout regions and
+> recovers the reading order, works out which section of the paper each
+> region belongs to, cuts the text into chunks at section and paragraph
+> boundaries, and lifts every figure and table out as its own image
+> with its caption. Everything is tested — 298 tests — and the whole
+> pipeline is on one page in a browser, with the baseline comparison at
+> the end of it."
+
+**Open `http://127.0.0.1:8000/` and drop the paper in.** It ingests and
+lands on `/pipeline/{paper_id}`, which is the component diagram with
+each box's real output under it. Scroll down — that is the demo. Do not
+open six tabs and do not open `/docs`: Swagger is the contract for the
+other three members, not a demonstration of what the thing does.
 
 ---
 
@@ -302,7 +312,7 @@ a known limit, and it is the honest place for the vision model in Box 8
 to take over.
 
 **Q: How do you know it works?**
-Two ways. There are 254 tests, including one that asserts the four marked
+Two ways. There are 298 tests, including one that asserts the four marked
 paragraphs of a synthetic two-column paper come out in the order
 ALPHA, BETA, GAMMA, DELTA — and a second test that confirms the naive
 top-to-bottom order *would* have been wrong, so the first test cannot
@@ -351,7 +361,7 @@ multimodal.
 ## Questions about engineering practice
 
 **Q: How do you know you have not broken anything?**
-254 tests, run before every commit. Eight of them exist because of a bug
+298 tests, run before every commit. Eight of them exist because of a bug
 I hit: the dev server's auto-reloader restarted the process while a
 record was being written and left a zero-byte file, so every later read
 of that paper failed. I fixed it by writing to a temporary file and
@@ -508,9 +518,89 @@ The section comparison is not affected at all: flat text has no
 sections at any chunk size, so it is 100% against 0% however either
 side is cut.
 
+---
+
+## Box 6 — artifact extraction
+
+**Q: What does this box do?**
+It cuts every figure, table and equation out of the page image Box 2
+rendered, using the bounding box Box 3 found, and saves each one as its
+own PNG with the caption the author printed beside it. Member 3 can put
+a picture in the knowledge graph and Member 4 can place one in the IEEE
+output without either of them reopening the PDF.
+
+**Q: Does it re-read the PDF?**
+No. The crop is the region's bounding box multiplied by
+`PageImage.scale`, which is `dpi / 72` — the one place points become
+pixels. That is why the factor lives in the schema and not in the
+cropping code: getting it backwards misplaces every crop in the paper.
+
+**Q: How did you choose the crop margin?**
+I measured both sides of it. Scanning outward from a region's bounding
+box in the rendered image, ink runs **0.7 points** past the edge — that
+is the stroke bleeding, so padding has to be more than that or the
+artwork gets shaved. Then I measured the distance to the nearest other
+region on the page: the caption sits **1.9 points** below the figure, so
+padding has to be less than that or the caption ends up in the picture.
+
+No single number is safe on every page, so each edge gets 6 points *or
+half the distance to whatever is next to it*, whichever is smaller. A
+figure standing alone gets the full margin; one with a caption pressed
+against it gets just under a point on that edge and the full margin on
+the other three. `tests/test_artifacts.py` asserts both ends: that the
+crop reaches past the plot frame to the tick labels, and that it stops
+short of the caption.
+
+**Q: Why is `linked_chunk_ids` empty?**
+Because that is Box 7. Cropping a figure and deciding which passages
+discuss it are two different jobs, and the second one needs the chunks,
+which Box 5 produces after Box 3. Keeping them apart means a failure in
+one is obvious instead of showing up as a wrong link.
+
+**Q: What happens on a paper with no figures?**
+Nothing — an empty artifact list and no folder created. And a run with
+`rasterise=false` still returns the artifacts with their captions and
+bounding boxes, just with `image_path` left null. A missing picture must
+not cost Member 3 the record that the figure exists.
+
+---
+
+## The demo itself
+
+**Q: Why is there a custom page instead of the API docs?**
+Because `/docs` answers "what are the endpoints", and a panel is asking
+"what does it do". Shown one box at a time this component is six browser
+tabs, and whoever is watching has to map each screen onto the component
+diagram while I talk. `/pipeline/{paper_id}` is the diagram, with each
+box's real output under it, in order, on one scroll. `/docs` is still
+there and still the contract Members 2, 3 and 4 write against.
+
+**Q: Why are the comparison bars blue and amber rather than red and green?**
+Because red and green is the one pair a lot of people cannot separate.
+I ran the two colours the page used to use through a palette validator:
+`#9c2b2b` against `#0f6b4f` comes back at ΔE 6.0 under deuteranopia,
+which is a fail — around one man in twelve has some red-green
+deficiency, and a panel is three or four people. Blue against amber is
+ΔE 24.5, and it passes in dark mode too.
+
+The second reason is that red-for-the-baseline and green-for-us is an
+argument rather than a measurement. 100% against 0% does not need help.
+Every bar also carries its own row label and its own printed
+percentage, so nothing on that chart is carried by colour alone.
+
+**Q: Are the numbers on that page computed live?**
+Yes. Every figure on it comes from the stored `IngestionResult` or from
+re-running the baseline on the stored PDF — nothing is hard-coded, and
+the baseline is re-run rather than cached so it always reflects the
+baseline as it stands today. A stale copy would quietly flatter us.
+
+---
+
 **Q: What is next?**
-Box 6, artifact extraction — cropping each figure out of the page image
-Box 2 rendered, using the bounding box Box 3 found.
+Box 7, artifact binding — linking each cropped figure to the chunks that
+discuss it, which fills `Artifact.linked_chunk_ids` and
+`Chunk.artifact_ids`. Then Box 8, the chunk and image store, which needs
+a GPU for ColPali. Both are after PP1.
 
 ---
 
