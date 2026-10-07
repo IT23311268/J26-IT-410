@@ -163,3 +163,35 @@ def assign_sections(regions: list[LayoutRegion]) -> list[LayoutRegion]:
         )
 
     return out
+
+
+#: A title longer than this is a run-on paragraph the heading rule
+#: caught, not a title. Measured against arXiv: the longest titles run
+#: to about 150 characters, and body text starts well above that.
+MAX_TITLE_CHARS = 200
+
+
+def paper_title(regions: list[LayoutRegion]) -> str:
+    """The paper's own title, taken from the page rather than the
+    filename.
+
+    `PaperMeta.title` is Optional because the flat baseline has no way
+    to find one — a PDF's embedded metadata title is wrong or missing
+    more often than not, and flat text cannot tell a title from the
+    first line of the abstract. Once Box 3 has measured the fonts and
+    Box 4 has marked the front matter, it is simply the first heading
+    before any recognised section begins: the largest type on page one,
+    above the abstract.
+
+    Returns "" when there is nothing defensible, which leaves
+    `PaperMeta.title` None rather than guessing.
+    """
+    for region in regions:
+        if region.section is not SectionType.TITLE:
+            break  # past the front matter; a heading here is a section
+        if region.region_type is not RegionType.HEADING:
+            continue
+        text = " ".join(region.text.split())
+        if text and len(text) <= MAX_TITLE_CHARS:
+            return text
+    return ""

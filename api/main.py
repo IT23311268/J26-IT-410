@@ -37,11 +37,14 @@ from fastapi.responses import FileResponse, HTMLResponse, JSONResponse
 from api import storage
 from api.compare import render_comparison
 from api.gallery import render_gallery
+from api.home import PaperCard, render_home
 from api.overlay import render_overlay
+from api.pipeline import render_pipeline
+from ingestion.artifacts import extract_artifacts
 from ingestion.baseline_extractor import extract_baseline
 from ingestion.layout import extract_regions
 from ingestion.chunking import chunk_regions
-from ingestion.sections import assign_sections
+from ingestion.sections import assign_sections, paper_title
 from ingestion.rasterise import DEFAULT_DPI, rasterise_pdf, resolve_image_path
 from schema.ingestion_schema_v1 import (
     SCHEMA_VERSION,
@@ -55,6 +58,37 @@ app = FastAPI(
     description="Member 1 — layout-aware multimodal document ingestion engine (Week 1: PyMuPDF flat baseline).",
     version=SCHEMA_VERSION,
 )
+
+
+@app.get("/", response_class=HTMLResponse, include_in_schema=False)
+def home() -> HTMLResponse:
+    """Upload a PDF, or open one already ingested.
+
+    `/docs` is the contract and stays where it is. This is the page to
+    open at a progress review, where the question is what the service
+    does rather than what its request bodies look like.
+    """
+    cards = []
+    for paper_id in storage.list_paper_ids():
+        try:
+            record = storage.load(paper_id)
+        except storage.CorruptRecord:
+            record = None
+        if record is None:
+            # A damaged or half-written record still gets a row. Hiding
+            # it would make a paper look like it was never ingested.
+            cards.append(PaperCard(paper_id=paper_id))
+        else:
+            cards.append(
+                PaperCard(
+                    paper_id=paper_id,
+                    title=record.paper.title or "",
+                    page_count=record.paper.page_count,
+                    chunk_count=len(record.chunks),
+                    artifact_count=len(record.artifacts),
+                )
+            )
+    return HTMLResponse(render_home(cards))
 
 
 @app.get("/health")
@@ -111,12 +145,29 @@ async def ingest(
                 # stays usable on its own.
                 regions = extract_regions(tmp_path, result.paper.paper_id)
                 result.regions = assign_sections(regions)
+                # The baseline cannot find a title; Box 4 can, now that
+                # the front matter is marked. Only fill it if the
+                # baseline left it empty — a title read out of the PDF's
+                # own metadata is better evidence than our guess.
+                if not result.paper.title:
+                    result.paper.title = paper_title(result.regions) or None
                 # The layout-aware chunks replace the baseline's
                 # fixed-size ones. `extraction_method` on the paper says
                 # which path produced them, so the two runs stay
                 # comparable in the same output format.
                 result.chunks = chunk_regions(
                     result.regions, result.paper.paper_id
+                )
+                # Box 6 cuts each figure, table and equation out of the
+                # page images Box 2 rendered. It needs `result.pages`,
+                # so it has to run after rasterisation — with
+                # rasterise=false it still returns the artifacts, just
+                # without pictures.
+                result.artifacts = extract_artifacts(
+                    result.regions,
+                    result.pages,
+                    result.paper.paper_id,
+                    storage.PROCESSED_DIR,
                 )
                 result.paper.extraction_method = ExtractionMethod.LAYOUT_AWARE_V1
             except Exception as exc:  # noqa: BLE001
@@ -213,6 +264,44 @@ def get_layout_overlay(paper_id: str, page_index: int) -> Response:
     return Response(content=png, media_type="image/png")
 
 
+@app.get(
+    "/paper/{paper_id}/artifact/{index}",
+    response_class=FileResponse,
+    responses={200: {"content": {"image/png": {}}}},
+)
+def get_artifact_image(paper_id: str, index: int) -> FileResponse:
+    """One cropped figure, table or equation — Box 6's output.
+
+    Indexed by position in `artifacts`, which is reading order, so
+    artifact 0 is the first one in the paper.
+    """
+    result = _load_or_404(paper_id)
+    if not 0 <= index < len(result.artifacts):
+        raise HTTPException(
+            status_code=404,
+            detail=f"Paper '{paper_id}' has {len(result.artifacts)} artifact(s); "
+            f"no artifact {index}.",
+        )
+
+    artifact = result.artifacts[index]
+    if artifact.image_path is None:
+        raise HTTPException(
+            status_code=404,
+            detail=f"Artifact {index} of '{paper_id}' was detected but never "
+            "cropped — the paper was ingested with rasterise=false. "
+            "Re-ingest with rasterise=true.",
+        )
+
+    path = storage.PROCESSED_DIR / artifact.image_path
+    if not path.exists():
+        raise HTTPException(
+            status_code=404,
+            detail=f"Artifact image '{artifact.image_path}' is recorded but "
+            "missing from disk.",
+        )
+    return FileResponse(path, media_type="image/png")
+
+
 @app.get("/gallery/{paper_id}", response_class=HTMLResponse, include_in_schema=False)
 def gallery(paper_id: str) -> HTMLResponse:
     """Every rendered page of one paper, as a single contact sheet.
@@ -221,6 +310,30 @@ def gallery(paper_id: str) -> HTMLResponse:
     this. Excluded from the OpenAPI schema so it doesn't clutter /docs.
     """
     return HTMLResponse(render_gallery(_load_or_404(paper_id)))
+
+
+@app.get("/pipeline/{paper_id}", response_class=HTMLResponse, include_in_schema=False)
+def pipeline(paper_id: str) -> HTMLResponse:
+    """Every box's output for one paper, in pipeline order, on one page.
+
+    The baseline is re-run here for the last section, the same way
+    /compare does it, so the comparison is never a stale copy. When the
+    source PDF is gone the page still renders — that one section says
+    why instead of the whole page 409-ing.
+    """
+    result = _load_or_404(paper_id)
+
+    source = storage.source_path(paper_id)
+    baseline = None
+    source_bytes = None
+    if source is not None:
+        source_bytes = source.stat().st_size
+        try:
+            baseline = extract_baseline(source)
+        except Exception:  # noqa: BLE001 — the page is worth more than the section
+            baseline = None
+
+    return HTMLResponse(render_pipeline(result, baseline, source_bytes))
 
 
 @app.get("/compare/{paper_id}", response_class=HTMLResponse, include_in_schema=False)

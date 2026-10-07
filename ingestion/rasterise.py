@@ -6,16 +6,24 @@ at what size, and at what resolution.
 
 Why this exists as its own stage
 --------------------------------
-Three later stages need pixels, not PDF drawing operators:
+These stages need pixels, not PDF drawing operators:
 
-  Box 3  layout region detection — the detector sees an image
   Box 6  artifact extraction     — figures are cropped out of the page image
   Box 8  ColPali visual retrieval — the model embeds page images directly
+  the /layout overlay            — draws Box 3's regions over the page
 
-If each of those rendered its own copy we would pay the render cost three
-times and, worse, risk three slightly different coordinate spaces. So the
-page is rendered once, here, and `PageImage.scale` is the single place the
-points-to-pixels conversion is defined.
+If each of those rendered its own copy we would pay the render cost
+several times and, worse, risk slightly different coordinate spaces. So
+the page is rendered once, here, and `PageImage.scale` is the single
+place the points-to-pixels conversion is defined.
+
+Note what is *not* on that list. **Box 3 does not read these images.**
+Layout detection works on the PDF's own text and vector data through
+PyMuPDF — font names, block boxes, drawing paths — none of which
+survives rasterisation. The image is how a human *sees* what Box 3
+decided, not how Box 3 decides it. That is also why a scanned page
+yields one figure and no text: the pixels are all there is, and this
+stage cannot read them. Box 8 is where that changes.
 
 This module deliberately knows nothing about `api/` — it is handed an
 output directory and returns data. That keeps ingestion runnable from a

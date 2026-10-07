@@ -30,33 +30,25 @@ from __future__ import annotations
 
 import html
 
+from api.ui import TOKENS
 from ingestion.baseline_extractor import DEFAULT_CHUNK_CHARS, DEFAULT_CHUNK_OVERLAP
 from ingestion.chunking import TARGET_CHUNK_CHARS
 from schema.ingestion_schema_v1 import Chunk, IngestionResult
 
-_STYLES = """
+_STYLES = TOKENS + """
+/* This page predates the shared palette and names its colours after
+   their role on it. Keep the names, take the values — three demo
+   surfaces that disagree about what grey means look like three
+   prototypes. */
 :root {
-  color-scheme: light dark;
-  --bg: #f6f7f9;
-  --surface: #ffffff;
-  --border: #d8dce3;
-  --text: #11161d;
-  --muted: #5b6472;
-  --accent: #1f3f8f;
-  --bad: #9a2c2c;
-  --good: #1d6b3f;
-}
-@media (prefers-color-scheme: dark) {
-  :root {
-    --bg: #11151b;
-    --surface: #181d25;
-    --border: #2c333d;
-    --text: #e8ecf1;
-    --muted: #97a1b0;
-    --accent: #8fb0ff;
-    --bad: #f08a8a;
-    --good: #7cd6a4;
-  }
+  --bg: var(--paper);
+  --surface: var(--sheet);
+  --border: var(--rule);
+  --text: var(--ink);
+  --muted: var(--ink-soft);
+  --accent: var(--blue);
+  --bad: var(--red);
+  --good: var(--green);
 }
 * { box-sizing: border-box; }
 body {

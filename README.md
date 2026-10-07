@@ -56,10 +56,29 @@ output) all build against.
   cut falls at a section boundary always, and at a paragraph boundary
   when a section runs longer than one chunk — never inside a sentence,
   which is what the fixed-size baseline gets wrong.
+- `ingestion/artifacts.py` — **pipeline Box 6.** Cuts each figure,
+  table and equation out of the page image Box 2 rendered and writes it
+  as a file of its own, with the caption the author printed beside it.
+  Nothing here re-reads the PDF: the crop is the region's bbox times
+  `PageImage.scale`. The crop margin was measured rather than guessed —
+  ink runs 0.7 pt outside a bbox and the nearest caption sits 1.9 pt
+  away, so each edge is padded by 6 pt *or half the distance to
+  whatever is next to it*, whichever is smaller.
 - `api/compare.py` — **baseline against layout-aware, side by side.**
   The same PDF through both paths, with the two numbers that carry the
   claim: how many chunks have no section, and how many start mid-word.
   Open `/compare/{paper_id}`.
+- `api/pipeline.py` — **every box's output on one page**, in pipeline
+  order, with the baseline comparison at the end. This is the view to
+  open at a progress review: six separate demo URLs mean the panel has
+  to map each screen onto the component diagram while the presenter
+  talks. Open `/pipeline/{paper_id}`.
+- `api/home.py` — the front door at `/`: drop a PDF in, or open one
+  already ingested. `/docs` is still the contract for Members 2/3/4 and
+  is linked from the footer.
+- `api/ui.py` — the palette and base styles the three HTML surfaces
+  share. No web fonts and no CDN: these pages are opened from localhost
+  on a laptop plugged into a projector.
 - `scripts/check_corpus.py` — runs Box 3 over a folder of papers and
   prints the pages that look wrong. Every threshold in `layout.py` was
   measured on one or two real pages, which is the honest way to pick a
@@ -111,14 +130,22 @@ The `--reload-dir` flags are not optional. A bare `--reload` watches the
 whole repo including `data/processed/`, so every ingest writes page
 images into the watched tree and restarts the server mid-request.
 
-Open **http://127.0.0.1:8000/docs** — interactive Swagger UI. Try
-`POST /ingest` with any PDF (or generate one first, see below).
+Open **http://127.0.0.1:8000/** and drop a PDF on the page. It ingests
+and takes you straight to the pipeline view for that paper. That is the
+whole demo — one URL, one scroll.
 
-Then, with a `paper_id` from `http://127.0.0.1:8000/papers`:
+`http://127.0.0.1:8000/docs` is still there: the interactive Swagger UI,
+and the contract Members 2/3/4 write their clients against.
 
+The individual views, with a `paper_id` from
+`http://127.0.0.1:8000/papers`:
+
+- `http://127.0.0.1:8000/pipeline/{paper_id}` — **every box's output in
+  order on one page.** The view to open at a progress review.
 - `http://127.0.0.1:8000/compare/{paper_id}` — **baseline against
-  layout-aware.** The view to open at a progress review: it is the only
-  one that shows the pipeline is *better* rather than merely working.
+  layout-aware**, the two runs side by side in full.
+- `http://127.0.0.1:8000/paper/{paper_id}/artifact/0` — one cropped
+  figure or table (Box 6), indexed in reading order.
 - `http://127.0.0.1:8000/gallery/{paper_id}` — every page at once.
 - `http://127.0.0.1:8000/paper/{paper_id}/page/0` — one page, full size.
 - `http://127.0.0.1:8000/paper/{paper_id}/page/0/layout` — **the same page
@@ -156,9 +183,13 @@ The eight boxes from the component diagram in the proposal:
 | 3 | Layout region detection | ✅ `ingestion/layout.py` |
 | 4 | Section identification | ✅ `ingestion/sections.py` |
 | 5 | Section-aware chunking | ✅ `ingestion/chunking.py` |
-| 6 | Artifact extraction | ⬜ next |
+| 6 | Artifact extraction | ✅ `ingestion/artifacts.py` |
 | 7 | Artifact binding | ⬜ after PP1 |
 | 8 | Chunk + image store | ⬜ after PP1 (needs GPU for ColPali) |
 
 Boxes 1–6 are the ~50% backend target for **Progress Presentation 1
-(22–27 Oct 2026)**.
+(22–27 Oct 2026)** — complete.
+
+Box 7 is what fills `Artifact.linked_chunk_ids` and `Chunk.artifact_ids`,
+which Box 6 deliberately leaves empty: the crop and its caption are one
+job, deciding which passages discuss it is another.
