@@ -163,9 +163,13 @@ def check_paper(pdf: Path, verbose: bool) -> tuple[Counter, int]:
     if verbose or flagged:
         counts = "  ".join(f"{k}={v}" for k, v in sorted(kinds.items()))
         print(f"  {counts}")
+    # Pages are numbered from one here and from zero in the URL, because
+    # that is how each is read: a person opens page 5 in a PDF reader,
+    # and the overlay route takes the index. Printing only the index
+    # sends them to the wrong page, which has happened.
     for page_no, problems in flagged:
         for problem in problems:
-            print(f"    page {page_no}: {problem}")
+            print(f"    page {page_no + 1} (url .../page/{page_no}/layout): {problem}")
 
     # No headings at all means Box 4 has nothing to build a section tree
     # from, which is worth knowing before Box 4 is written.

@@ -1000,6 +1000,56 @@ def vector_figure_blocks(page, text_blocks: list[dict] | None = None) -> list[di
     ]
 
 
+def merge_image_fragments(blocks: list[dict]) -> list[dict]:
+    """Put a clipped raster image back together.
+
+    A PDF can draw one image once and then reveal it through several
+    clipping paths — which is what a tool does when a figure's
+    background is a bitmap and the labels on top of it are vector text.
+    PyMuPDF reports each visible piece as its own image block, so a
+    single figure arrives as a scatter of small ones.
+
+    Found on page 22 of arXiv:2610.12376, a page-wide tokenisation
+    figure: **26 image blocks, one `transform` between them**. Box 3
+    returned 29 figures for that page and Box 6 would have written 29
+    crops of one picture.
+
+    `transform` is the PDF's own record of where an image was placed,
+    so blocks that share one are the same placement by definition, not
+    by a threshold. Their boxes are unioned and one block comes back.
+    Vector pseudo-blocks carry no transform and pass through untouched.
+    """
+    out: list[dict] = []
+    first_piece: dict[tuple, dict] = {}
+
+    for block in blocks:
+        transform = block.get("transform")
+        if block.get("type") != 1 or transform is None:
+            out.append(block)
+            continue
+
+        # Rounded: the same placement can differ in the last decimal
+        # between pieces, and a tenth of a point is far below anything
+        # that distinguishes two real placements.
+        key = tuple(round(float(v), 1) for v in transform)
+        seen = first_piece.get(key)
+        if seen is None:
+            piece = dict(block)
+            first_piece[key] = piece
+            out.append(piece)
+            continue
+
+        a, b = seen["bbox"], block["bbox"]
+        seen["bbox"] = (
+            min(a[0], b[0]),
+            min(a[1], b[1]),
+            max(a[2], b[2]),
+            max(a[3], b[3]),
+        )
+
+    return out
+
+
 def _page_body_size(blocks: list[dict]) -> float:
     """The page's body font size: the median size across its text,
     weighted by how much text is set at each size.
@@ -1103,6 +1153,11 @@ def extract_regions(pdf_path: Path, paper_id: str) -> list[LayoutRegion]:
                 for b in page_dict.get("blocks", [])
                 if not is_page_furniture(b, page_height)
             ]
+
+            # A clipped bitmap arrives as many pieces. Reassemble it
+            # before anything measures the page, so a figure is one
+            # region rather than a scatter of them.
+            page_blocks = merge_image_fragments(page_blocks)
 
             text_blocks = [
                 b for b in page_blocks if b.get("type") == 0 and _block_text(b)
