@@ -171,6 +171,27 @@ def assign_sections(regions: list[LayoutRegion]) -> list[LayoutRegion]:
 MAX_TITLE_CHARS = 200
 
 
+def _is_sideways(region: LayoutRegion) -> bool:
+    """Is this text printed rotated, running up the page?
+
+    arXiv prints its own stamp down the left margin of page one —
+    `arXiv:2005.11401v4 [cs.CL] 12 Apr 2021` — rotated a quarter turn.
+    It sits above the real title, it is set large enough to pass the
+    heading rule, and it is not the paper's title; it is a label arXiv
+    added, like a catalogue sticker on a library book. Every paper
+    fetched from arXiv carries one.
+
+    A line of text is wider than it is tall. Turn it on its side and
+    that reverses, which is what makes this measurable rather than a
+    guess. Measured on arXiv:2610.12376: the stamp's box is 20 points
+    wide and 335 tall — seventeen times taller than wide — while the
+    title below it is 389 by 46.
+    """
+    box = region.bbox
+    width, height = box.x1 - box.x0, box.y1 - box.y0
+    return width > 0 and height > width
+
+
 def paper_title(regions: list[LayoutRegion]) -> str:
     """The paper's own title, taken from the page rather than the
     filename.
@@ -190,6 +211,8 @@ def paper_title(regions: list[LayoutRegion]) -> str:
         if region.section is not SectionType.TITLE:
             break  # past the front matter; a heading here is a section
         if region.region_type is not RegionType.HEADING:
+            continue
+        if _is_sideways(region):
             continue
         text = " ".join(region.text.split())
         if text and len(text) <= MAX_TITLE_CHARS:

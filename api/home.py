@@ -20,7 +20,7 @@ import html
 from dataclasses import dataclass
 from urllib.parse import quote
 
-from api.ui import BASE_CSS
+from api.ui import BASE_CSS, BRAND
 
 
 @dataclass(frozen=True)
@@ -174,6 +174,7 @@ def render_home(papers: list[PaperCard]) -> str:
         "<meta name='viewport' content='width=device-width, initial-scale=1'>"
         "<title>Ingestion engine — J26-IT-410</title>"
         f"<style>{_CSS}</style></head><body>"
+        f"{BRAND}"
         "<div class='wrap'>"
         "<h1 class='title'>A reference paper, taken apart</h1>"
         "<p class='standfirst'>This service reads a PDF the way a person reads it: "
@@ -189,7 +190,9 @@ def render_home(papers: list[PaperCard]) -> str:
         f"<section class='papers'><h2>Already read</h2>{listing}</section>"
         "</div>"
         "<footer><div class='inner'>"
-        "<span>J26-IT-410 · Member 1 · layout-aware multimodal ingestion</span>"
+        # the project and member are named in the band at the top; a
+        # footer that repeats them is a second signature on one page
+        "<span>For Members 2, 3 and 4</span>"
         "<a href='/docs'>API reference</a>"
         "<a href='/papers'>Paper IDs as JSON</a>"
         "<a href='/health'>Health</a>"

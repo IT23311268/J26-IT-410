@@ -117,7 +117,30 @@ p  { margin: 0; max-width: 68ch; }
 .readout b { font-size: 24px; font-weight: 600; line-height: 1.1; }
 .readout span { font-size: 12px; color: var(--ink-soft); }
 
+/* The band across the top of every page.
+
+   The page used to take its identity from whatever the paper was
+   called, which fails the moment a paper arrives titled
+   `arXiv:2005.11401v4 [cs.CL]` — a stamp arXiv prints down the margin
+   rather than a title. The engine is named here, where it reads the
+   same on every page and whatever the paper turns out to be. */
+.brand { background: var(--series-ours); color: #fff; padding: 9px 24px; }
+.brand .inner {
+  max-width: 1140px; margin: 0 auto;
+  display: flex; justify-content: space-between; align-items: baseline; gap: 16px;
+}
+.brand b { font-size: 14px; font-weight: 600; letter-spacing: -0.005em; }
+.brand span { font-size: 12px; opacity: 0.82; }
+
 @media (prefers-reduced-motion: reduce) {
   * { animation: none !important; transition: none !important; scroll-behavior: auto !important; }
 }
 """
+
+#: The band's markup, so the two pages cannot drift apart.
+BRAND = (
+    "<div class='brand'><div class='inner'>"
+    "<b>Layout-aware ingestion engine</b>"
+    "<span>J26-IT-410 · Member 1</span>"
+    "</div></div>"
+)
