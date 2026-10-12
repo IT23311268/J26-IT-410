@@ -304,3 +304,47 @@ def test_a_paragraph_is_not_a_title(tmp_path: Path):
 
 def test_no_regions_means_no_title():
     assert paper_title([]) == ""
+
+
+def test_the_arxiv_stamp_is_not_the_title():
+    """arXiv prints its own identifier down the left margin of page
+    one, rotated a quarter turn. It sits above the real title and it
+    is set large enough to pass the heading rule, so every paper
+    fetched from arXiv came back titled after its own catalogue
+    number. Measured on arXiv:2610.12376 the stamp's box is 20 points
+    wide and 335 tall; the title below it is 389 by 46."""
+    from schema.ingestion_schema_v1 import BoundingBox, LayoutRegion
+
+    def heading(text, x0, y0, x1, y1):
+        return LayoutRegion(
+            region_id=f"r{y0}",
+            paper_id="p",
+            region_type=RegionType.HEADING,
+            bbox=BoundingBox(page=0, x0=x0, y0=y0, x1=x1, y1=y1),
+            text=text,
+            order_index=int(y0),
+            section=SectionType.TITLE,
+        )
+
+    regions = [
+        heading("arXiv:2610.12376v1  [cs.CL]  8 Oct 2026", 24.3, 253.2, 44.3, 588.7),
+        heading("Latent Core Tokenizer: Compress, but Meaningfully", 103, 96, 492, 142),
+    ]
+    assert paper_title(regions) == "Latent Core Tokenizer: Compress, but Meaningfully"
+
+
+def test_an_ordinary_title_is_not_mistaken_for_a_stamp():
+    """The rule is `taller than wide`. A short title set over three
+    lines is still wider than it is tall."""
+    from schema.ingestion_schema_v1 import BoundingBox, LayoutRegion
+
+    region = LayoutRegion(
+        region_id="r1",
+        paper_id="p",
+        region_type=RegionType.HEADING,
+        bbox=BoundingBox(page=0, x0=120, y0=90, x1=460, y1=170),
+        text="Attention Is All You Need",
+        order_index=0,
+        section=SectionType.TITLE,
+    )
+    assert paper_title([region]) == "Attention Is All You Need"

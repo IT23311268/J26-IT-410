@@ -223,3 +223,97 @@ def test_the_root_serves_the_front_door():
 
 def test_an_unknown_paper_404s():
     assert TestClient(app).get("/pipeline/no-such-paper").status_code == 404
+
+
+# --------------------------------------------------------------------------
+# the headline, and the two chunks facing each other
+# --------------------------------------------------------------------------
+
+
+def test_the_result_is_at_the_top_before_any_scrolling(ingested):
+    """A panel reads the top of a page and then listens. Whatever is up
+    there is what they take away, so it has to be the result and not
+    the filename."""
+    result, baseline = ingested
+    html = render_pipeline(result, baseline)
+    head = html[: html.index("id='s1'")]
+    assert "regions found" in head
+    assert "chunks carry their section" in head
+    assert "figures and tables lifted out" in head
+
+
+def test_the_headline_carries_the_comparison(ingested):
+    result, baseline = ingested
+    head = render_pipeline(result, baseline)[: render_pipeline(result, baseline).index("id='s1'")]
+    assert "start mid-word" in head
+    assert "without this pipeline" in head
+
+
+def test_the_headline_survives_a_missing_baseline(ingested):
+    """No stored PDF means no comparison, but the counts still stand."""
+    result, _ = ingested
+    html = render_pipeline(result, None)
+    head = html[: html.index("id='s1'")]
+    assert "regions found" in head
+    assert "without this pipeline" not in head
+
+
+@pytest.fixture
+def two_column(tmp_path: Path):
+    """A paper the baseline actually breaks a word in.
+
+    The chart fixture above is a single page whose baseline happens to
+    cut cleanly, so it cannot show the thing being measured. This one
+    is the two-column generator at a small chunk size, which is where
+    `lumn paragraphs…` comes from.
+    """
+    import subprocess
+    import sys
+
+    pdf = tmp_path / "cols.pdf"
+    subprocess.run(
+        [sys.executable, "scripts/generate_two_column_pdf.py", str(pdf)],
+        check=True,
+        capture_output=True,
+    )
+    baseline = extract_baseline(pdf, chunk_chars=300, chunk_overlap=0)
+    layout = extract_baseline(pdf)
+    regions = assign_sections(extract_regions(pdf, layout.paper.paper_id))
+    layout.chunks = chunk_regions(regions, layout.paper.paper_id)
+    layout.regions = regions
+    return layout, baseline
+
+
+def test_the_broken_opening_is_marked_not_just_counted(two_column):
+    """50% against 0% is the measure. This is what the 50% looks like."""
+    result, baseline = two_column
+    html = render_pipeline(result, baseline)
+    assert "mark class='cut'" in html
+    assert "Opens inside a word" in html
+
+
+def test_the_clean_opening_is_marked_too(two_column):
+    result, baseline = two_column
+    html = render_pipeline(result, baseline)
+    assert "mark class='keep'" in html
+    assert "Opens at the heading" in html
+
+
+def test_a_baseline_that_never_breaks_a_word_shows_no_pair(ingested):
+    """A one-paragraph paper can cut cleanly by luck. Inventing a
+    broken chunk to illustrate the point would be a lie."""
+    result, baseline = ingested
+    baseline.chunks = [
+        c.model_copy(update={"text": "Clean opening. " + c.text}) for c in baseline.chunks
+    ]
+    html = render_pipeline(result, baseline)
+    assert "Opens inside a word" not in html
+    assert "id='ev'" in html
+
+
+def test_the_reading_order_claim_is_above_the_overlay(ingested):
+    """A caption under an image is read after the image, if at all."""
+    result, baseline = ingested
+    html = render_pipeline(result, baseline)
+    assert "class='claim'" in html
+    assert html.index("reading order</strong>") < html.index("/layout'")

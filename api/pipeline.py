@@ -22,7 +22,7 @@ import html
 from typing import Optional
 from urllib.parse import quote
 
-from api.ui import BASE_CSS
+from api.ui import BASE_CSS, BRAND
 from ingestion.baseline_extractor import DEFAULT_CHUNK_CHARS
 from ingestion.chunking import TARGET_CHUNK_CHARS
 from ingestion.rasterise import DEFAULT_DPI
@@ -62,21 +62,70 @@ STAGES = [
 ]
 
 _CSS = BASE_CSS + """
+/* The masthead is a drawing's title block: the subject on the left,
+   the sheet's particulars ruled off on the right, and the result
+   across the foot of it. It used to be four stacked bands of equal
+   weight, which is a list of facts rather than a composition. */
 .masthead {
   border-bottom: 1px solid var(--rule-firm);
   background: var(--sheet);
-  padding: 28px 24px 20px;
+  padding: 28px 24px 0;
 }
 .masthead .inner { max-width: 1140px; margin: 0 auto; }
-.masthead h1 { max-width: 24ch; }
-.facts {
-  display: flex; flex-wrap: wrap; gap: 4px 32px;
-  margin: 14px 0 0; padding: 0;
+.titleblock {
+  display: grid; grid-template-columns: minmax(0, 1fr) auto;
+  gap: 16px 56px; align-items: start;
 }
-.facts div { display: flex; flex-direction: column; }
-.facts dt { font-size: 12px; color: var(--ink-soft); }
-.facts dd { margin: 0; font-size: 14px; }
-.elsewhere { display: flex; flex-wrap: wrap; gap: 18px; margin-top: 16px; font-size: 14px; }
+.masthead h1 { max-width: 22ch; font-size: 29px; }
+.standfirst {
+  margin-top: 10px; color: var(--ink-soft);
+  font-size: 15px; max-width: 48ch;
+}
+
+/* label and value on one line each, the values aligned down a column
+   the way a drawing's particulars are */
+.facts {
+  display: grid; grid-template-columns: auto auto; gap: 3px 18px;
+  margin: 4px 0 0; padding: 0 0 0 20px;
+  border-left: 1px solid var(--rule);
+  font-size: 13px;
+}
+.facts dt { color: var(--ink-soft); }
+.facts dd { margin: 0; }
+
+.elsewhere {
+  display: flex; flex-wrap: wrap; gap: 20px;
+  margin-top: 20px; font-size: 13px;
+}
+.elsewhere a { color: var(--ink-soft); text-decoration: none; }
+.elsewhere a:hover { color: var(--blue); text-decoration: underline; }
+
+@media (max-width: 820px) {
+  .titleblock { grid-template-columns: 1fr; gap: 18px; }
+  .facts { padding-left: 0; border-left: 0; justify-content: start; }
+  .masthead h1 { font-size: 27px; }
+}
+
+/* the result, read before anything is scrolled */
+.headline {
+  display: flex; flex-wrap: wrap; gap: 0;
+  margin-top: 24px; border-top: 1px solid var(--ink);
+}
+.headline > div {
+  flex: 1 1 150px; padding: 16px 20px 20px 0;
+  display: flex; flex-direction: column; gap: 3px;
+}
+.headline > div + div { padding-left: 20px; border-left: 1px solid var(--rule); }
+.headline b { font-size: 27px; font-weight: 600; line-height: 1; letter-spacing: -0.02em; }
+.headline span { font-size: 12px; color: var(--ink-soft); line-height: 1.35; }
+.headline .good b { color: var(--series-ours); }
+/* the baseline's number sits quiet: it is the thing being beaten, and
+   the gap speaks without being shouted at */
+.headline .plain b { color: var(--ink-soft); font-weight: 400; }
+@media (max-width: 760px) {
+  .headline > div { flex-basis: 45%; }
+  .headline b { font-size: 22px; }
+}
 
 .layout {
   max-width: 1140px; margin: 0 auto;
@@ -134,7 +183,13 @@ _CSS = BASE_CSS + """
 .strip a:hover .pno { color: var(--blue); }
 
 /* Box 3 — the overlay */
-.overlay { display: grid; grid-template-columns: minmax(0, 1fr) 210px; gap: 20px; align-items: start; }
+.claim {
+  margin: 0 0 16px; padding: 12px 0 12px 16px;
+  border-left: 3px solid var(--series-ours);
+  font-size: 15px; max-width: 76ch;
+}
+.claim strong { font-weight: 650; }
+.overlay { display: grid; grid-template-columns: minmax(0, 1fr) 190px; gap: 24px; align-items: start; }
 /* A paper page is tall and mostly margin. Left unbounded it eats a
    whole projector screen and the panel scrolls past the counts beside
    it, so cap the height and let the full-size view be one click away. */
@@ -215,6 +270,23 @@ _CSS = BASE_CSS + """
 .bar .track i.baseline { background: var(--series-baseline); }
 .bar .track i.ours     { background: var(--series-ours); }
 .bar .val { font-size: 14px; font-weight: 600; text-align: right; }
+/* one chunk from each run, facing each other */
+.facing { display: grid; grid-template-columns: 1fr 1fr; gap: 1px; background: var(--rule);
+          border: 1px solid var(--rule); border-top: 0; }
+.side { background: var(--sheet); padding: 15px 18px 16px; }
+.side h4 { margin: 0 0 9px; font-size: 13px; font-weight: 650; }
+.side .text {
+  font: 13px/1.6 ui-monospace, "Cascadia Mono", Consolas, monospace;
+  margin: 0; max-width: none;
+}
+.side mark { padding: 1px 3px; border-radius: 2px; }
+.side mark.cut  { background: var(--series-baseline); color: #fff; }
+.side mark.keep { background: var(--series-ours); color: #fff; }
+.verdict { margin-top: 11px; font-size: 13px; line-height: 1.45; }
+.verdict.bad  { color: var(--series-baseline); }
+.verdict.good { color: var(--series-ours); }
+@media (max-width: 760px) { .facing { grid-template-columns: 1fr; } }
+
 .note { margin-top: 12px; font-size: 13px; color: var(--ink-soft); }
 
 .empty { color: var(--ink-soft); font-style: italic; font-size: 14px; }
@@ -374,11 +446,18 @@ def _box3(result: IngestionResult, pid: str) -> str:
             if p != busiest
         ) + "</div>"
 
+    # The claim goes above the picture, not under it in grey. This is
+    # the one thing on the page a panel can check with their own eyes
+    # while the presenter is still talking, and a caption below an
+    # image is read after the image — if at all.
     return (
+        "<p class='claim'>The numbered badges are <strong>reading order</strong>. "
+        "On a two-column page they run down the left column and only then cross "
+        "to the right — which is the whole difference between this and reading "
+        "the page top to bottom.</p>"
         f"<div class='overlay'><div>{picture}"
         f"<p class='note'>Page {(busiest or 0) + 1}, the densest page in the paper. "
-        f"The badges are reading order — on a two-column page they run down the "
-        f"left column before crossing to the right.</p>{links}</div>"
+        f"Click it for full size.</p>{links}</div>"
         f"<ul class='tally'>{tally}</ul></div>"
     )
 
@@ -505,6 +584,48 @@ def _box6(result: IngestionResult, pid: str) -> str:
     )
 
 
+def _headline(
+    result: IngestionResult, baseline: Optional[IngestionResult]
+) -> str:
+    """The result, before the walkthrough that explains it.
+
+    The page used to open on the filename, the page count and the
+    schema version — true, and none of it the achievement. A panel
+    watching from a projector reads the top of a page and then listens
+    to the presenter; whatever is up here is what they take away.
+
+    So the top carries the answer and the stages below carry the
+    argument. The two comparison figures are repeated at the end in
+    full, with their bars and their caveat; here they are the headline
+    they earn.
+    """
+    placed = sum(1 for c in result.chunks if c.section is not SectionType.UNKNOWN)
+    sections = {
+        r.section for r in result.regions if r.section is not SectionType.UNKNOWN
+    }
+
+    cells = [
+        (f"{len(result.regions)}", "regions found", ""),
+        (f"{len(sections)}", "sections identified", ""),
+        (f"{placed}/{len(result.chunks)}", "chunks carry their section", "good"),
+        (f"{len(result.artifacts)}", "figures and tables lifted out", ""),
+    ]
+
+    if baseline is not None and baseline.chunks and result.chunks:
+        def broken(r: IngestionResult) -> float:
+            n = sum(1 for c in r.chunks if c.text.lstrip()[:1].islower())
+            return 100 * n / len(r.chunks)
+
+        cells.append((f"{broken(result):.0f}%", "start mid-word", "good"))
+        cells.append((f"{broken(baseline):.0f}%", "without this pipeline", "plain"))
+
+    return "<div class='headline'>" + "".join(
+        f"<div class='{tone}'><b class='mono'>{_e(value)}</b>"
+        f"<span>{_e(label)}</span></div>"
+        for value, label, tone in cells
+    ) + "</div>"
+
+
 def _bar(label: str, n: int, total: int, series: str) -> str:
     """One labelled bar. Lower is better on both measures here, so the
     bar is literally "how much of this goes wrong" — a full bar is a
@@ -520,6 +641,54 @@ def _bar(label: str, n: int, total: int, series: str) -> str:
         f"<div class='bar'><span class='who'>{_e(label)}</span>"
         f"<span class='track'><i class='{series}' style='width:{share:.1f}%'></i></span>"
         f"<span class='val mono' title='{n} of {total} chunks'>{value}</span></div>"
+    )
+
+
+def _side_by_side(result: IngestionResult, baseline: IngestionResult) -> str:
+    """One chunk from each run, with its opening marked.
+
+    The bars above say 50% against 0%. This says what the 50% is: a
+    chunk that opens `lumn paragraphs, even though…` is the tail of a
+    word the chunk before it kept the head of, and no amount of
+    retrieval tuning recovers the sentence it came from.
+
+    A panel reads two short paragraphs faster than two bars, and the
+    broken one is the argument — so it is on the left, where reading
+    starts.
+    """
+    broken = next(
+        (c for c in baseline.chunks if c.text.lstrip()[:1].islower()), None
+    )
+    clean = next(
+        (
+            c
+            for c in result.chunks
+            if "\n" in c.text and c.section is not SectionType.UNKNOWN
+        ),
+        result.chunks[0] if result.chunks else None,
+    )
+    if broken is None or clean is None:
+        return ""
+
+    # The leading fragment is the tail of a split word: everything up
+    # to the first space.
+    tail, _, rest = broken.text.lstrip().partition(" ")
+    head, _, body = clean.text.partition("\n")
+
+    return (
+        "<div class='facing'>"
+        "<div class='side'><h4>Baseline</h4>"
+        f"<p class='text'><mark class='cut'>{_e(tail)}</mark> "
+        f"{_e(' '.join(rest.split())[:190])} …</p>"
+        "<p class='verdict bad'>Opens inside a word. The sentence it belongs to "
+        "is in the chunk before this one.</p></div>"
+        "<div class='side'><h4>This pipeline</h4>"
+        f"<p class='text'><mark class='keep'>{_e(head[:70])}</mark> "
+        f"{_e(' '.join(body.split())[:170])} …</p>"
+        "<p class='verdict good'>Opens at the heading that introduces it, and "
+        f"carries <strong>{_e(clean.section.value.replace('_', ' '))}</strong> "
+        "with it.</p></div>"
+        "</div>"
     )
 
 
@@ -564,6 +733,7 @@ def _evidence(result: IngestionResult, baseline: Optional[IngestionResult], pid:
 
     return (
         f"<div class='measures'>{blocks}</div>"
+        f"{_side_by_side(result, baseline)}"
         f"<p class='note'>The same PDF down both paths. The baseline cuts flat "
         f"text every {DEFAULT_CHUNK_CHARS} characters and this pipeline cuts at "
         f"section and paragraph boundaries, so the two runs produce different "
@@ -634,12 +804,12 @@ def render_pipeline(
     ]
 
     facts = (
-        f"<div><dt>File</dt><dd class='mono'>{_e(paper.source_filename)}</dd></div>"
-        f"<div><dt>Pages</dt><dd class='mono'>{paper.page_count}</dd></div>"
-        f"<div><dt>Method</dt><dd class='mono'>{_e(paper.extraction_method.value)}</dd></div>"
-        f"<div><dt>Schema</dt><dd class='mono'>{_e(result.schema_version)}</dd></div>"
-        f"<div><dt>Ingested</dt><dd class='mono'>"
-        f"{_e(paper.ingested_at.strftime('%Y-%m-%d %H:%M UTC'))}</dd></div>"
+        f"<dt>File</dt><dd class='mono'>{_e(paper.source_filename)}</dd>"
+        f"<dt>Pages</dt><dd class='mono'>{paper.page_count}</dd>"
+        f"<dt>Method</dt><dd class='mono'>{_e(paper.extraction_method.value)}</dd>"
+        f"<dt>Schema</dt><dd class='mono'>{_e(result.schema_version)}</dd>"
+        f"<dt>Read</dt><dd class='mono'>"
+        f"{_e(paper.ingested_at.strftime('%Y-%m-%d %H:%M UTC'))}</dd>"
     )
 
     return (
@@ -647,12 +817,17 @@ def render_pipeline(
         "<meta name='viewport' content='width=device-width, initial-scale=1'>"
         f"<title>{_e(title)} — ingestion pipeline</title>"
         f"<style>{_CSS}</style></head><body>"
-        f"<header class='masthead'><div class='inner'><h1>{_e(title)}</h1>"
-        f"<dl class='facts'>{facts}</dl>"
+        f"{BRAND}"
+        f"<header class='masthead'><div class='inner'>"
+        f"<div class='titleblock'><div><h1>{_e(title)}</h1>"
+        "<p class='standfirst'>Every stage, in the order it runs, with what "
+        "each one produced from this paper.</p></div>"
+        f"<dl class='facts'>{facts}</dl></div>"
         f"<div class='elsewhere'><a href='/'>All papers</a>"
         f"<a href='/paper/{pid}'>Raw JSON</a>"
         f"<a href='/gallery/{pid}'>Page gallery</a>"
         f"<a href='/compare/{pid}'>Baseline comparison</a></div>"
+        f"{_headline(result, baseline)}"
         "</div></header>"
         f"<div class='layout'><nav class='rail' aria-label='Pipeline stages'>"
         f"<ol>{rail}</ol></nav><main>{''.join(bodies)}</main></div>"
