@@ -184,12 +184,24 @@ The eight boxes from the component diagram in the proposal:
 | 4 | Section identification | ✅ `ingestion/sections.py` |
 | 5 | Section-aware chunking | ✅ `ingestion/chunking.py` |
 | 6 | Artifact extraction | ✅ `ingestion/artifacts.py` |
-| 7 | Artifact binding | ⬜ after PP1 |
-| 8 | Chunk + image store | ⬜ after PP1 (needs GPU for ColPali) |
+| 7 | Artifact binding | ✅ `ingestion/linking.py` |
+| 8 | Visual embeddings | ⬜ planned for PP2 — needs a GPU |
 
-Boxes 1–6 are the ~50% backend target for **Progress Presentation 1
-(22–27 Oct 2026)** — complete.
+Boxes 1–7 run end to end and are the state shown at **Progress
+Presentation 1 (22–27 Oct 2026)**.
 
-Box 7 is what fills `Artifact.linked_chunk_ids` and `Chunk.artifact_ids`,
-which Box 6 deliberately leaves empty: the crop and its caption are one
-job, deciding which passages discuss it is another.
+Box 7 fills `Artifact.linked_chunk_ids` and `Chunk.artifact_ids`, which
+Box 6 deliberately leaves empty: cutting the crop and its caption is one
+job, deciding which passages discuss it is another. It matches on the
+label the author printed — a caption reading "Figure 1: Overview." and a
+sentence reading "as shown in Figure 1" name the same thing — so the
+link is the paper's own cross-reference rather than a guess about which
+chunk sits nearest. A figure the text never names comes back with no
+chunks, because an empty list is a true answer and a nearest-chunk guess
+would reach Member 2 looking like evidence.
+
+Box 8 is not started. It puts each page image through a ColVision
+late-interaction model (ColPali, or the 256M ColSmol variant) so a query
+can retrieve a page by what it looks like, not only by its text.
+Embedding is a one-off cost at ingest time and wants a GPU; retrieval
+afterwards does not. Nothing in boxes 1–7 depends on it.
