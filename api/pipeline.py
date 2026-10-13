@@ -22,7 +22,7 @@ import html
 from typing import Optional
 from urllib.parse import quote
 
-from api.ui import BASE_CSS, BRAND
+from api.ui import BASE_CSS, BRAND, app_rail
 from ingestion.baseline_extractor import DEFAULT_CHUNK_CHARS
 from ingestion.chunking import TARGET_CHUNK_CHARS
 from ingestion.rasterise import DEFAULT_DPI
@@ -67,26 +67,26 @@ _CSS = BASE_CSS + """
    across the foot of it. It used to be four stacked bands of equal
    weight, which is a list of facts rather than a composition. */
 .masthead {
-  border-bottom: 1px solid var(--rule-firm);
+  border-bottom: 1px solid var(--rule);
   background: var(--sheet);
-  padding: 28px 24px 0;
+  padding: 52px 24px 0;
 }
 .masthead .inner { max-width: 1140px; margin: 0 auto; }
 .titleblock {
   display: grid; grid-template-columns: minmax(0, 1fr) auto;
-  gap: 16px 56px; align-items: start;
+  gap: 20px 64px; align-items: start;
 }
-.masthead h1 { max-width: 22ch; font-size: 29px; }
+.masthead h1 { max-width: 20ch; }
 .standfirst {
-  margin-top: 10px; color: var(--ink-soft);
-  font-size: 15px; max-width: 48ch;
+  margin-top: 14px; color: var(--ink-soft);
+  font-size: 16px; max-width: 46ch;
 }
 
 /* label and value on one line each, the values aligned down a column
    the way a drawing's particulars are */
 .facts {
-  display: grid; grid-template-columns: auto auto; gap: 3px 18px;
-  margin: 4px 0 0; padding: 0 0 0 20px;
+  display: grid; grid-template-columns: auto auto; gap: 5px 20px;
+  margin: 6px 0 0; padding: 2px 0 2px 22px;
   border-left: 1px solid var(--rule);
   font-size: 13px;
 }
@@ -94,53 +94,56 @@ _CSS = BASE_CSS + """
 .facts dd { margin: 0; }
 
 .elsewhere {
-  display: flex; flex-wrap: wrap; gap: 20px;
-  margin-top: 20px; font-size: 13px;
+  display: flex; flex-wrap: wrap; gap: 22px;
+  margin-top: 30px; font-size: 13.5px;
 }
 .elsewhere a { color: var(--ink-soft); text-decoration: none; }
-.elsewhere a:hover { color: var(--blue); text-decoration: underline; }
+.elsewhere a:hover { color: var(--ink); text-decoration: underline; }
 
 @media (max-width: 820px) {
-  .titleblock { grid-template-columns: 1fr; gap: 18px; }
+  .titleblock { grid-template-columns: 1fr; gap: 20px; }
   .facts { padding-left: 0; border-left: 0; justify-content: start; }
-  .masthead h1 { font-size: 27px; }
+  .masthead { padding-top: 36px; }
+  .masthead h1 { font-size: 30px; }
 }
 
-/* the result, read before anything is scrolled */
+/* The result, read before anything is scrolled. It is the foot of the
+   title block, so it gets the one firm rule on the page above it and
+   the largest figures anywhere. */
 .headline {
   display: flex; flex-wrap: wrap; gap: 0;
-  margin-top: 24px; border-top: 1px solid var(--ink);
+  margin-top: 40px; border-top: 1px solid var(--ink);
 }
 .headline > div {
-  flex: 1 1 150px; padding: 16px 20px 20px 0;
-  display: flex; flex-direction: column; gap: 3px;
+  flex: 1 1 150px; padding: 24px 24px 30px 0;
+  display: flex; flex-direction: column; gap: 6px;
 }
-.headline > div + div { padding-left: 20px; border-left: 1px solid var(--rule); }
-.headline b { font-size: 27px; font-weight: 600; line-height: 1; letter-spacing: -0.02em; }
-.headline span { font-size: 12px; color: var(--ink-soft); line-height: 1.35; }
+.headline > div + div { padding-left: 24px; border-left: 1px solid var(--rule); }
+.headline b { font-size: 40px; font-weight: 600; line-height: 1; letter-spacing: -0.03em; }
+.headline span { font-size: 12.5px; color: var(--ink-soft); line-height: 1.4; }
 .headline .good b { color: var(--series-ours); }
 /* the baseline's number sits quiet: it is the thing being beaten, and
    the gap speaks without being shouted at */
 .headline .plain b { color: var(--ink-soft); font-weight: 400; }
 @media (max-width: 760px) {
-  .headline > div { flex-basis: 45%; }
-  .headline b { font-size: 22px; }
+  .headline > div { flex-basis: 45%; padding-bottom: 22px; }
+  .headline b { font-size: 29px; }
 }
 
 .layout {
   max-width: 1140px; margin: 0 auto;
-  display: grid; grid-template-columns: 188px minmax(0, 1fr);
-  gap: 40px; padding: 0 24px 96px;
+  display: grid; grid-template-columns: 196px minmax(0, 1fr);
+  gap: 56px; padding: 0 24px 120px;
 }
 
 /* the rail doubles as the component diagram: six boxes, in order,
    with the one you are reading marked */
-.rail { position: sticky; top: 0; align-self: start; padding-top: 36px; }
+.rail { position: sticky; top: 0; align-self: start; padding-top: 72px; }
 .rail ol { list-style: none; margin: 0; padding: 0; border-left: 1px solid var(--rule); }
 .rail li { position: relative; }
 .rail a {
-  display: block; padding: 7px 0 7px 16px;
-  font-size: 13px; line-height: 1.3;
+  display: block; padding: 8px 0 8px 18px;
+  font-size: 13.5px; line-height: 1.35;
   color: var(--ink-soft); text-decoration: none;
   border-left: 2px solid transparent; margin-left: -1px;
 }
@@ -148,25 +151,32 @@ _CSS = BASE_CSS + """
 .rail a .n {
   font-family: ui-monospace, "Cascadia Mono", Consolas, monospace;
   display: inline-block; min-width: 1.1em;  /* the unnumbered last entry still lines up */
-  margin-right: 7px; color: var(--rule-firm);
+  margin-right: 8px; color: var(--rule-firm);
 }
-.rail a[aria-current="true"] { color: var(--ink); border-left-color: var(--blue); }
-.rail a[aria-current="true"] .n { color: var(--blue); }
-.rail .last { margin-top: 8px; padding-top: 10px; border-top: 1px solid var(--rule); }
+.rail a[aria-current="true"] { color: var(--ink); border-left-color: var(--ink); }
+.rail a[aria-current="true"] .n { color: var(--ink); }
+.rail .last { margin-top: 10px; padding-top: 12px; border-top: 1px solid var(--rule); }
 
-.stage { padding-top: 36px; }
-.stage + .stage { margin-top: 44px; border-top: 1px solid var(--rule); }
-.stage header { display: flex; align-items: baseline; gap: 14px; }
+/* Space, not rules, separates the stages. A hairline between every
+   one of them made six boxes read as a table of six rows; what is
+   wanted is six things that each take a breath. */
+.stage { padding-top: 72px; }
+.stage + .stage { margin-top: 24px; }
+.stage header { display: flex; align-items: baseline; gap: 18px; }
 .stage .no {
   font-family: ui-monospace, "Cascadia Mono", Consolas, monospace;
-  font-size: 34px; font-weight: 300; line-height: 1;
-  color: var(--rule-firm); min-width: 34px;
+  font-size: 27px; font-weight: 400; line-height: 1.1;
+  color: var(--rule-firm); min-width: 30px;
+  font-variant-numeric: tabular-nums;
 }
-.lede { margin-top: 8px; color: var(--ink-soft); font-size: 14px; }
-.out { margin-top: 18px; }
+/* The stage number hangs in the margin and everything else lines up
+   under the title, so the six numbers run down one edge and the
+   content runs down another. */
+.lede { margin-top: 12px; margin-left: 48px; color: var(--ink-soft); font-size: 15.5px; max-width: 64ch; }
+.out { margin-top: 28px; margin-left: 48px; }
 
 .sheet { background: var(--sheet); border: 1px solid var(--rule); }
-.pad { padding: 14px 16px; }
+.pad { padding: 18px 22px; }
 
 /* Box 2 — the page strip */
 .strip { display: flex; gap: 8px; overflow-x: auto; padding-bottom: 6px; }
@@ -179,14 +189,15 @@ _CSS = BASE_CSS + """
   display: block; line-height: 1.6; font-style: normal;
   font-size: 11px; color: var(--ink-soft); text-align: center;
 }
-.strip a:hover img { border-color: var(--blue); }
-.strip a:hover .pno { color: var(--blue); }
+.strip a:hover img { border-color: var(--rule-firm); }
+.strip a:hover .pno { color: var(--ink); }
 
-/* Box 3 — the overlay */
+/* Box 3 — the overlay. The claim is prose, so its rule is ink: on
+   this page a coloured mark would promise a measurement. */
 .claim {
-  margin: 0 0 16px; padding: 12px 0 12px 16px;
-  border-left: 3px solid var(--series-ours);
-  font-size: 15px; max-width: 76ch;
+  margin: 0 0 22px; padding: 2px 0 2px 20px;
+  border-left: 2px solid var(--ink);
+  font-size: 16.5px; line-height: 1.6; max-width: 72ch;
 }
 .claim strong { font-weight: 650; }
 .overlay { display: grid; grid-template-columns: minmax(0, 1fr) 190px; gap: 24px; align-items: start; }
@@ -206,97 +217,103 @@ _CSS = BASE_CSS + """
 .pagelinks { margin-top: 12px; font-size: 13px; display: flex; flex-wrap: wrap; gap: 10px; }
 
 /* Box 4 — the section run */
-.run { display: flex; flex-wrap: wrap; gap: 6px; }
+.run { display: flex; flex-wrap: wrap; gap: 8px; }
 .run li { list-style: none; }
 .run span {
-  display: inline-flex; align-items: baseline; gap: 7px;
-  padding: 5px 10px; border: 1px solid var(--rule); background: var(--sheet);
-  font-size: 13px;
+  display: inline-flex; align-items: baseline; gap: 8px;
+  padding: 7px 13px; border: 1px solid var(--rule); background: var(--sheet);
+  font-size: 13.5px;
 }
 .run .c { color: var(--ink-soft); font-size: 12px; font-variant-numeric: tabular-nums; }
 .run .miss { border-style: dashed; color: var(--ink-soft); }
 
 /* Box 5 — chunk cards */
-.chunks { display: grid; gap: 10px; }
-.chunk { border: 1px solid var(--rule); background: var(--sheet); padding: 12px 14px; }
+.chunks { display: grid; gap: 12px; }
+.chunk { border: 1px solid var(--rule); background: var(--sheet); padding: 16px 20px 17px; }
 .chunk .top {
-  display: flex; flex-wrap: wrap; gap: 10px; align-items: baseline;
-  font-size: 12px; color: var(--ink-soft); margin-bottom: 7px;
+  display: flex; flex-wrap: wrap; gap: 12px; align-items: baseline;
+  font-size: 12px; color: var(--ink-soft); margin-bottom: 10px;
 }
-.sect { color: var(--green); border: 1px solid currentColor; padding: 1px 7px; font-size: 11px; }
+.sect { color: var(--green); border: 1px solid currentColor; padding: 2px 8px; font-size: 11px; }
 .sect.none { color: var(--red); }
-.chunk p { font-size: 13px; line-height: 1.5; max-width: 90ch; }
+.chunk p { font-size: 14px; line-height: 1.6; max-width: 88ch; }
 .chunk .head { font-weight: 600; }
 
 /* Box 6 — the crops */
-.crops { display: grid; grid-template-columns: repeat(auto-fill, minmax(216px, 1fr)); gap: 14px; }
+.crops { display: grid; grid-template-columns: repeat(auto-fill, minmax(228px, 1fr)); gap: 18px; }
 .crops figure { margin: 0; border: 1px solid var(--rule); background: var(--sheet); }
 .crops img {
-  display: block; width: 100%; height: 176px; object-fit: contain;
-  background: #fff; border-bottom: 1px solid var(--rule); padding: 6px;
+  display: block; width: 100%; height: 182px; object-fit: contain;
+  background: #fff; border-bottom: 1px solid var(--rule); padding: 10px;
 }
-.crops figcaption { padding: 9px 11px; font-size: 12px; line-height: 1.45; }
-.crops .kind { color: var(--ink-soft); font-size: 11px; display: block; margin-bottom: 2px; }
+.crops figcaption { padding: 12px 14px 13px; font-size: 12.5px; line-height: 1.5; }
+.crops .kind { color: var(--ink-soft); font-size: 11px; display: block; margin-bottom: 3px; }
 
 /* Box 5's headline numbers. The only tile row on the page — Box 1 is a
    quiet line and the comparison is bars, so this one reads as a
-   highlight instead of as the house style. */
+   highlight instead of as the house style. The won figure is the same
+   blue the comparison gives this pipeline, so one colour means one
+   thing the whole way down. */
 .scores { display: grid; grid-template-columns: repeat(4, 1fr); gap: 1px; background: var(--rule); border: 1px solid var(--rule); }
-.scores div { background: var(--sheet); padding: 13px 15px; }
-.scores .win b { color: var(--green); }
+.scores div { background: var(--sheet); padding: 18px 20px 19px; }
+.scores .win b { color: var(--series-ours); }
 
 /* Box 1 — the file, stated once and not dressed up */
 .filerow {
-  display: flex; flex-wrap: wrap; gap: 8px 28px; align-items: baseline;
+  display: flex; flex-wrap: wrap; gap: 10px 32px; align-items: baseline;
   border-top: 1px solid var(--rule); border-bottom: 1px solid var(--rule);
-  padding: 12px 2px;
+  padding: 16px 2px;
 }
-.filerow b { font-size: 15px; font-weight: 600; }
+.filerow b { font-size: 16px; font-weight: 600; }
 .filerow span { font-size: 14px; color: var(--ink-soft); }
 
-/* the evidence — two measures, two bars each */
+/* The evidence — two measures, two bars each. This is the only place
+   on the page where colour appears, and it is the thing the demo is
+   for, so the bars are taller and the figures larger than anything
+   else in a card. */
 .measures { display: grid; gap: 1px; background: var(--rule); border: 1px solid var(--rule); }
-.measure { background: var(--sheet); padding: 16px 18px 18px; }
-.measure h3 { font-size: 15px; }
-.measure > p { margin-bottom: 14px; max-width: 70ch; }
-.bar { display: grid; grid-template-columns: 112px minmax(0, 1fr) 52px; gap: 12px; align-items: center; }
-.bar + .bar { margin-top: 8px; }
-.bar .who { font-size: 13px; }
-.bar .track { height: 14px; background: var(--shade); box-shadow: inset 0 0 0 1px var(--rule); }
+.measure { background: var(--sheet); padding: 22px 24px 24px; }
+.measure h3 { font-size: 17px; }
+.measure > p { margin-bottom: 20px; max-width: 70ch; font-size: 14px; color: var(--ink-soft); }
+.bar { display: grid; grid-template-columns: 116px minmax(0, 1fr) 58px; gap: 14px; align-items: center; }
+.bar + .bar { margin-top: 11px; }
+.bar .who { font-size: 13.5px; }
+.bar .track { height: 18px; background: var(--shade); box-shadow: inset 0 0 0 1px var(--rule); }
 .bar .track i {
   display: block; height: 100%; min-width: 2px;
-  border-radius: 0 3px 3px 0;   /* rounded at the data end only */
 }
 .bar .track i.baseline { background: var(--series-baseline); }
 .bar .track i.ours     { background: var(--series-ours); }
-.bar .val { font-size: 14px; font-weight: 600; text-align: right; }
+.bar .val { font-size: 15px; font-weight: 650; text-align: right; font-variant-numeric: tabular-nums; }
 /* one chunk from each run, facing each other */
 .facing { display: grid; grid-template-columns: 1fr 1fr; gap: 1px; background: var(--rule);
           border: 1px solid var(--rule); border-top: 0; }
-.side { background: var(--sheet); padding: 15px 18px 16px; }
-.side h4 { margin: 0 0 9px; font-size: 13px; font-weight: 650; }
+.side { background: var(--sheet); padding: 20px 24px 22px; }
+.side h4 { margin: 0 0 12px; font-size: 13.5px; font-weight: 650; }
 .side .text {
-  font: 13px/1.6 ui-monospace, "Cascadia Mono", Consolas, monospace;
+  font: 13px/1.7 ui-monospace, "Cascadia Mono", Consolas, monospace;
   margin: 0; max-width: none;
 }
-.side mark { padding: 1px 3px; border-radius: 2px; }
+.side mark { padding: 2px 4px; }
 .side mark.cut  { background: var(--series-baseline); color: #fff; }
 .side mark.keep { background: var(--series-ours); color: #fff; }
-.verdict { margin-top: 11px; font-size: 13px; line-height: 1.45; }
+.verdict { margin-top: 14px; font-size: 13px; line-height: 1.5; }
 .verdict.bad  { color: var(--series-baseline); }
 .verdict.good { color: var(--series-ours); }
 @media (max-width: 760px) { .facing { grid-template-columns: 1fr; } }
 
-.note { margin-top: 12px; font-size: 13px; color: var(--ink-soft); }
+.note { margin-top: 16px; font-size: 13.5px; color: var(--ink-soft); }
 
 .empty { color: var(--ink-soft); font-style: italic; font-size: 14px; }
 
 @media (max-width: 900px) {
-  .layout { grid-template-columns: 1fr; gap: 0; padding: 0 18px 64px; }
-  .rail { position: static; padding-top: 24px; }
+  .layout { grid-template-columns: 1fr; gap: 0; padding: 0 18px 72px; }
+  .rail { position: static; padding-top: 28px; }
   .rail ol { display: flex; flex-wrap: wrap; border-left: 0; }
-  .rail a { border-left: 0; border-bottom: 2px solid transparent; padding: 6px 12px 6px 0; }
+  .rail a { border-left: 0; border-bottom: 2px solid transparent; padding: 6px 14px 6px 0; }
   .rail .last { margin: 0; padding: 0; border-top: 0; }
+  .stage { padding-top: 48px; }
+  .lede, .out { margin-left: 0; }
   .overlay { grid-template-columns: 1fr; }
   .scores { grid-template-columns: repeat(2, 1fr); }
 }
@@ -817,16 +834,16 @@ def render_pipeline(
         "<meta name='viewport' content='width=device-width, initial-scale=1'>"
         f"<title>{_e(title)} — ingestion pipeline</title>"
         f"<style>{_CSS}</style></head><body>"
+        f"{app_rail('pipeline', paper.paper_id)}"
         f"{BRAND}"
         f"<header class='masthead'><div class='inner'>"
         f"<div class='titleblock'><div><h1>{_e(title)}</h1>"
         "<p class='standfirst'>Every stage, in the order it runs, with what "
         "each one produced from this paper.</p></div>"
         f"<dl class='facts'>{facts}</dl></div>"
-        f"<div class='elsewhere'><a href='/'>All papers</a>"
-        f"<a href='/paper/{pid}'>Raw JSON</a>"
-        f"<a href='/gallery/{pid}'>Page gallery</a>"
-        f"<a href='/compare/{pid}'>Baseline comparison</a></div>"
+        # The row of links that used to sit here — all papers, raw JSON,
+        # gallery, comparison — is the app rail now, and printing both
+        # was the same four destinations twice on one screen.
         f"{_headline(result, baseline)}"
         "</div></header>"
         f"<div class='layout'><nav class='rail' aria-label='Pipeline stages'>"
