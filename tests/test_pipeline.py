@@ -317,3 +317,60 @@ def test_the_reading_order_claim_is_above_the_overlay(ingested):
     html = render_pipeline(result, baseline)
     assert "class='claim'" in html
     assert html.index("reading order</strong>") < html.index("/layout'")
+
+
+# --------------------------------------------------------------------------
+# the app rail
+# --------------------------------------------------------------------------
+
+
+def test_both_pages_carry_the_same_rail(ingested):
+    """Two pages that navigate differently read as two prototypes."""
+    result, baseline = ingested
+    for html in (render_home([]), render_pipeline(result, baseline)):
+        assert "class='apprail'" in html
+
+
+def test_the_home_rail_leaves_out_what_needs_a_paper():
+    """Four of the six destinations are views of one paper. Before a
+    paper is chosen they have nothing to point at, and a control that
+    is never enabled is a dead end with a tooltip."""
+    html = render_home([])
+    assert ">Papers</span>" in html
+    assert ">API</span>" in html
+    for absent in (">Pipeline</span>", ">Pages</span>", ">Compare</span>", ">JSON</span>"):
+        assert absent not in html
+
+
+def test_the_pipeline_rail_reaches_every_view_of_this_paper(ingested):
+    result, baseline = ingested
+    html = render_pipeline(result, baseline)
+    pid = result.paper.paper_id
+    for href in (f"/pipeline/{pid}", f"/gallery/{pid}", f"/compare/{pid}", f"/paper/{pid}"):
+        assert f"href='{href}'" in html
+
+
+def test_the_rail_marks_where_you_are(ingested):
+    result, baseline = ingested
+    assert render_pipeline(result, baseline).count("aria-current='page'") == 1
+    assert render_home([]).count("aria-current='page'") == 1
+
+
+def test_a_rail_entry_is_never_an_icon_on_its_own(ingested):
+    """A panel meeting the service for the first time would have to
+    hover six shapes to find out what they are."""
+    result, baseline = ingested
+    html = render_pipeline(result, baseline)
+    assert html.count("<svg width='20'") == html.count("</svg><span>")
+
+
+def test_a_paper_id_with_a_space_is_encoded_in_the_rail(ingested):
+    result, baseline = ingested
+    result.paper.paper_id = "Linked Lists"
+    assert "/gallery/Linked%20Lists" in render_pipeline(result, baseline)
+
+
+def test_the_masthead_does_not_repeat_the_rail(ingested):
+    """Those four links used to sit under the title as well."""
+    result, baseline = ingested
+    assert "class='elsewhere'" not in render_pipeline(result, baseline)

@@ -20,7 +20,7 @@ import html
 from dataclasses import dataclass
 from urllib.parse import quote
 
-from api.ui import BASE_CSS, BRAND
+from api.ui import BASE_CSS, BRAND, app_rail
 
 
 @dataclass(frozen=True)
@@ -46,51 +46,60 @@ class PaperCard:
 
 _CSS = BASE_CSS + """
 body { display: flex; flex-direction: column; min-height: 100vh; }
-.wrap { width: 100%; max-width: 860px; margin: 0 auto; padding: 60px 24px 40px; flex: 1; }
+.wrap { width: 100%; max-width: 840px; margin: 0 auto; padding: 96px 24px 72px; flex: 1; }
 
-.title { max-width: 28ch; font-size: 34px; }
-.standfirst { margin-top: 12px; color: var(--ink-soft); max-width: 62ch; }
+.title { max-width: 18ch; }
+.standfirst { margin-top: 20px; color: var(--ink-soft); max-width: 58ch; font-size: 17px; }
 
-/* the one loud thing on the page */
+/* The one thing to do on this page, given the proportions of the
+   thing it takes: a sheet, not a banner. It was a wide shallow strip,
+   which reads as a form field rather than as somewhere to put a
+   paper. */
 .drop {
-  margin-top: 32px; position: relative;
+  margin-top: 48px; position: relative;
   border: 1px dashed var(--rule-firm); background: var(--sheet);
-  padding: 34px 28px; text-align: center;
+  padding: 72px 28px; text-align: center;
 }
-.drop.over { border-color: var(--blue); background: var(--blue-wash); }
+.drop.over { border-color: var(--ink); background: var(--shade); }
 .drop input[type=file] { position: absolute; inset: 0; opacity: 0; cursor: pointer; }
-.drop strong { display: block; font-size: 19px; font-weight: 600; }
-.drop span { display: block; margin-top: 6px; font-size: 13px; color: var(--ink-soft); }
-.drop.busy { border-style: solid; border-color: var(--blue); }
+.drop strong { display: block; font-size: 22px; font-weight: 650; letter-spacing: -0.015em; }
+.drop span { display: block; margin-top: 9px; font-size: 14px; color: var(--ink-soft); }
+.drop.busy { border-style: solid; border-color: var(--ink); }
 .drop.busy input { pointer-events: none; }
 
 /* a determinate bar would be a lie: the server does not stream progress */
-.pulse { height: 2px; margin-top: 18px; background: var(--rule); overflow: hidden; }
-.pulse i { display: block; height: 100%; width: 36%; background: var(--blue); animation: slide 1.25s ease-in-out infinite; }
+.pulse { height: 2px; margin-top: 26px; background: var(--rule); overflow: hidden; }
+.pulse i { display: block; height: 100%; width: 36%; background: var(--ink); animation: slide 1.25s ease-in-out infinite; }
 @keyframes slide { 0% { transform: translateX(-100%); } 100% { transform: translateX(380%); } }
-.fail { margin-top: 16px; color: var(--red); font-size: 14px; }
+.fail { margin-top: 18px; color: var(--red); font-size: 14px; }
 
-.papers { margin-top: 44px; }
-.papers h2 { padding-bottom: 8px; border-bottom: 1px solid var(--rule-firm); }
+.papers { margin-top: 72px; }
+.papers h2 { padding-bottom: 14px; border-bottom: 1px solid var(--ink); }
 .papers ul { list-style: none; margin: 0; padding: 0; }
 .papers li { border-bottom: 1px solid var(--rule); }
 .papers a {
-  display: flex; justify-content: space-between; align-items: baseline; gap: 16px;
-  padding: 13px 4px; text-decoration: none; color: var(--ink);
+  display: flex; justify-content: space-between; align-items: baseline; gap: 24px;
+  padding: 20px 6px; text-decoration: none; color: var(--ink);
 }
-.papers a:hover { background: var(--shade); }
-.papers a:hover b { color: var(--blue); }
-.papers .what { display: flex; flex-direction: column; gap: 1px; min-width: 0; }
-.papers b { font-size: 15px; font-weight: 600; }
+.papers a:hover { background: var(--sheet); }
+.papers .what { display: flex; flex-direction: column; gap: 4px; min-width: 0; }
+.papers b { font-size: 16.5px; font-weight: 600; letter-spacing: -0.012em; }
 .papers .id { font-size: 12px; color: var(--ink-soft); }
 .papers .go { font-size: 13px; color: var(--ink-soft); white-space: nowrap; }
-.none { padding: 22px 2px; color: var(--ink-soft); font-size: 14px; }
+.none { padding: 30px 2px; color: var(--ink-soft); font-size: 15px; }
 
 footer {
   border-top: 1px solid var(--rule); background: var(--sheet);
-  padding: 18px 24px; font-size: 13px; color: var(--ink-soft);
+  padding: 22px 24px; font-size: 13px; color: var(--ink-soft);
 }
-footer .inner { max-width: 860px; margin: 0 auto; display: flex; flex-wrap: wrap; gap: 20px; }
+footer .inner { max-width: 840px; margin: 0 auto; display: flex; flex-wrap: wrap; gap: 24px; }
+footer a { color: var(--ink-soft); }
+
+@media (max-width: 680px) {
+  .wrap { padding-top: 56px; }
+  .title { font-size: 31px; }
+  .drop { padding: 48px 20px; }
+}
 """
 
 _SCRIPT = """
@@ -174,6 +183,7 @@ def render_home(papers: list[PaperCard]) -> str:
         "<meta name='viewport' content='width=device-width, initial-scale=1'>"
         "<title>Ingestion engine — J26-IT-410</title>"
         f"<style>{_CSS}</style></head><body>"
+        f"{app_rail('home')}"
         f"{BRAND}"
         "<div class='wrap'>"
         "<h1 class='title'>A reference paper, taken apart</h1>"
