@@ -44,6 +44,7 @@ from ingestion.artifacts import extract_artifacts
 from ingestion.baseline_extractor import extract_baseline
 from ingestion.layout import extract_regions
 from ingestion.chunking import chunk_regions
+from ingestion.linking import link_artifacts
 from ingestion.sections import assign_sections, paper_title
 from ingestion.rasterise import DEFAULT_DPI, rasterise_pdf, resolve_image_path
 from schema.ingestion_schema_v1 import (
@@ -168,6 +169,13 @@ async def ingest(
                     result.pages,
                     result.paper.paper_id,
                     storage.PROCESSED_DIR,
+                )
+                # Box 7 binds the two together: each artifact learns
+                # which chunks cite it and each chunk learns which
+                # artifacts it names. It reads only the text already
+                # produced, so it runs last and needs nothing from disk.
+                result.artifacts, result.chunks = link_artifacts(
+                    result.artifacts, result.chunks
                 )
                 result.paper.extraction_method = ExtractionMethod.LAYOUT_AWARE_V1
             except Exception as exc:  # noqa: BLE001

@@ -23,6 +23,7 @@ from typing import Optional
 from urllib.parse import quote
 
 from api.ui import BASE_CSS, BRAND, app_rail
+from ingestion.linking import caption_label, reference_span
 from ingestion.baseline_extractor import DEFAULT_CHUNK_CHARS
 from ingestion.chunking import TARGET_CHUNK_CHARS
 from ingestion.rasterise import DEFAULT_DPI
@@ -48,6 +49,11 @@ CHUNK_CHARS_SHOWN = 210
 #: Artifact crops shown in the Box 6 grid.
 ARTIFACT_LIMIT = 8
 
+#: How many artifact-to-chunk links the walkthrough prints, and how
+#: much of the citing passage it shows around the reference.
+LINK_PREVIEW = 4
+LINK_CHARS = 150
+
 #: key, box number, rail label. The rail is read at a glance from
 #: across a room, so its labels are shorter than the headings they
 #: point at — one line each, no wrapping.
@@ -58,6 +64,7 @@ STAGES = [
     ("s4", "4", "Sections identified"),
     ("s5", "5", "Chunks cut"),
     ("s6", "6", "Figures and tables"),
+    ("s7", "7", "Artifacts linked"),
     ("ev", "", "Against the baseline"),
 ]
 
@@ -130,38 +137,69 @@ _CSS = BASE_CSS + """
   .headline b { font-size: 29px; }
 }
 
-.layout {
-  max-width: 1140px; margin: 0 auto;
-  display: grid; grid-template-columns: 196px minmax(0, 1fr);
-  gap: 56px; padding: 0 24px 120px;
-}
+.layout { max-width: 1180px; margin: 0 auto; padding: 36px 24px 120px; }
 
-/* the rail doubles as the component diagram: six boxes, in order,
-   with the one you are reading marked */
-.rail { position: sticky; top: 0; align-self: start; padding-top: 72px; }
-.rail ol { list-style: none; margin: 0; padding: 0; border-left: 1px solid var(--rule); }
+/* The six boxes, in order, with the one you are reading marked. It
+   lives inside the app rail now — see api/ui.py — so it has no
+   position of its own; what it keeps is the look of a sub-list and
+   the scroll-spy that marks your place. */
+.rail { list-style: none; margin: 0; padding: 0; }
 .rail li { position: relative; }
 .rail a {
-  display: block; padding: 8px 0 8px 18px;
-  font-size: 13.5px; line-height: 1.35;
+  display: block; padding: 5px 0 5px 10px;
+  font-size: 12.5px; line-height: 1.35;
   color: var(--ink-soft); text-decoration: none;
-  border-left: 2px solid transparent; margin-left: -1px;
+  border-left: 2px solid transparent; margin-left: -11px;
 }
 .rail a:hover { color: var(--ink); }
 .rail a .n {
   font-family: ui-monospace, "Cascadia Mono", Consolas, monospace;
   display: inline-block; min-width: 1.1em;  /* the unnumbered last entry still lines up */
-  margin-right: 8px; color: var(--rule-firm);
+  margin-right: 7px; color: var(--rule-firm);
 }
-.rail a[aria-current="true"] { color: var(--ink); border-left-color: var(--ink); }
-.rail a[aria-current="true"] .n { color: var(--ink); }
-.rail .last { margin-top: 10px; padding-top: 12px; border-top: 1px solid var(--rule); }
+.rail a[aria-current="true"] { color: var(--brand-ink); font-weight: 600;
+                               border-left-color: var(--brand); }
+.rail a[aria-current="true"] .n { color: var(--brand); }
+.rail .last { margin-top: 6px; padding-top: 7px; border-top: 1px solid var(--rule); }
 
-/* Space, not rules, separates the stages. A hairline between every
-   one of them made six boxes read as a table of six rows; what is
-   wanted is six things that each take a breath. */
-.stage { padding-top: 72px; }
-.stage + .stage { margin-top: 24px; }
+/* The full-size view. A thumbnail used to open the raw bitmap in a
+   tab of its own, where the browser's back button is dead because
+   nothing preceded it — a demo that walks into a blank tab with a
+   picture in it and no way home. This never leaves the page. */
+.zoom {
+  position: fixed; inset: 0; z-index: 50;
+  background: rgba(10, 12, 15, 0.88);
+  display: flex; align-items: center; justify-content: center;
+  padding: 56px 24px 24px;
+}
+.zoom[hidden] { display: none; }
+.zoom img {
+  max-width: 100%; max-height: 100%;
+  object-fit: contain; background: #fff; box-shadow: 0 2px 40px rgba(0,0,0,.5);
+}
+.zoom .shut {
+  position: absolute; top: 14px; right: 18px;
+  background: none; border: 1px solid rgba(255,255,255,.45); border-radius: 4px;
+  color: #fff; font: inherit; font-size: 13px; padding: 5px 12px; cursor: pointer;
+}
+.zoom .shut:hover { background: rgba(255,255,255,.14); }
+
+/* Each stage is its own sheet, and the paper colour shows between
+   them. Before this the six ran together down one grey field with
+   small white boxes floating in it: the content differed but the
+   frame never did, so the page read as a long document rather than
+   as six things a machine does in order. A sheet apiece gives the
+   scroll a beat, and it is the same object the engine works on. */
+.stage {
+  background: var(--sheet); border: 1px solid var(--rule);
+  border-radius: var(--r); padding: 40px 44px 46px;
+}
+.stage + .stage { margin-top: 18px; }
+/* On a white sheet a white box is invisible, so the inner containers
+   that have no bordered parent take the shade instead. */
+.stage .sheet, .stage .chunk, .stage .crops figure, .stage .run span { background: var(--shade); }
+/* the verdict, which is not a stage and should not look like one */
+#ev { border-top: 2px solid var(--ink); margin-top: 42px; }
 .stage header { display: flex; align-items: baseline; gap: 18px; }
 .stage .no {
   font-family: ui-monospace, "Cascadia Mono", Consolas, monospace;
@@ -175,14 +213,14 @@ _CSS = BASE_CSS + """
 .lede { margin-top: 12px; margin-left: 48px; color: var(--ink-soft); font-size: 15.5px; max-width: 64ch; }
 .out { margin-top: 28px; margin-left: 48px; }
 
-.sheet { background: var(--sheet); border: 1px solid var(--rule); }
+.sheet { background: var(--sheet); border: 1px solid var(--rule); border-radius: var(--r); }
 .pad { padding: 18px 22px; }
 
 /* Box 2 — the page strip */
 .strip { display: flex; gap: 8px; overflow-x: auto; padding-bottom: 6px; }
 .strip a { flex: 0 0 auto; display: block; line-height: 0; text-decoration: none; }
 .strip img {
-  height: 132px; width: auto; display: block;
+  height: 132px; width: auto; display: block; border-radius: 4px;
   background: var(--sheet); border: 1px solid var(--rule);
 }
 .strip .pno {
@@ -229,19 +267,28 @@ _CSS = BASE_CSS + """
 
 /* Box 5 — chunk cards */
 .chunks { display: grid; gap: 12px; }
-.chunk { border: 1px solid var(--rule); background: var(--sheet); padding: 16px 20px 17px; }
+.chunk { border: 1px solid var(--rule); background: var(--sheet); border-radius: var(--r);
+         padding: 16px 20px 17px; }
 .chunk .top {
   display: flex; flex-wrap: wrap; gap: 12px; align-items: baseline;
   font-size: 12px; color: var(--ink-soft); margin-bottom: 10px;
 }
-.sect { color: var(--green); border: 1px solid currentColor; padding: 2px 8px; font-size: 11px; }
-.sect.none { color: var(--red); }
+/* The section a chunk landed in. It used to be green, and red when no
+   section was found — a pair that measured ΔE 6.0 apart under
+   deuteranopia, and that was never carrying the meaning anyway,
+   because the word is printed inside the chip. The unplaced one is a
+   dashed border instead, which survives being photographed, printed
+   or looked at by the one man in twelve. */
+.sect { color: var(--ink-soft); border: 1px solid var(--rule-firm);
+        border-radius: 3px; padding: 2px 8px; font-size: 11px; }
+.sect.none { border-style: dashed; font-style: italic; }
 .chunk p { font-size: 14px; line-height: 1.6; max-width: 88ch; }
 .chunk .head { font-weight: 600; }
 
 /* Box 6 — the crops */
 .crops { display: grid; grid-template-columns: repeat(auto-fill, minmax(228px, 1fr)); gap: 18px; }
-.crops figure { margin: 0; border: 1px solid var(--rule); background: var(--sheet); }
+.crops figure { margin: 0; border: 1px solid var(--rule); background: var(--sheet);
+                border-radius: var(--r); overflow: hidden; }
 .crops img {
   display: block; width: 100%; height: 182px; object-fit: contain;
   background: #fff; border-bottom: 1px solid var(--rule); padding: 10px;
@@ -254,9 +301,25 @@ _CSS = BASE_CSS + """
    highlight instead of as the house style. The won figure is the same
    blue the comparison gives this pipeline, so one colour means one
    thing the whole way down. */
-.scores { display: grid; grid-template-columns: repeat(4, 1fr); gap: 1px; background: var(--rule); border: 1px solid var(--rule); }
+.scores { display: grid; grid-template-columns: repeat(4, 1fr); gap: 1px; background: var(--rule);
+          border: 1px solid var(--rule); border-radius: var(--r); overflow: hidden; }
 .scores div { background: var(--sheet); padding: 18px 20px 19px; }
 .scores .win b { color: var(--series-ours); }
+
+/* Box 7 — the artifact on the left, the sentence that cites it on the
+   right, and between them the words the link was actually made from. */
+.links { list-style: none; margin: 14px 0 0; padding: 0; display: grid; gap: 1px;
+         background: var(--rule); border: 1px solid var(--rule);
+         border-radius: var(--r); overflow: hidden; }
+.link { background: var(--sheet); display: grid; gap: 4px 28px; padding: 16px 20px 18px;
+        grid-template-columns: minmax(0, 7fr) minmax(0, 9fr); align-items: start; }
+.link .kind { display: block; font-size: 11px; color: var(--ink-soft); margin-bottom: 4px; }
+.link .from b { font-size: 14px; font-weight: 600; line-height: 1.45; }
+.link .to p { font-size: 13.5px; line-height: 1.6; max-width: none; }
+/* achromatic: on this page a coloured mark promises a measurement, and
+   this is a quotation */
+.link mark.ref { background: var(--ink); color: var(--sheet); padding: 1px 5px; }
+@media (max-width: 760px) { .link { grid-template-columns: 1fr; gap: 10px; } }
 
 /* Box 1 — the file, stated once and not dressed up */
 .filerow {
@@ -271,14 +334,16 @@ _CSS = BASE_CSS + """
    on the page where colour appears, and it is the thing the demo is
    for, so the bars are taller and the figures larger than anything
    else in a card. */
-.measures { display: grid; gap: 1px; background: var(--rule); border: 1px solid var(--rule); }
+.measures { display: grid; gap: 1px; background: var(--rule); border: 1px solid var(--rule);
+            border-radius: var(--r) var(--r) 0 0; overflow: hidden; }
 .measure { background: var(--sheet); padding: 22px 24px 24px; }
 .measure h3 { font-size: 17px; }
 .measure > p { margin-bottom: 20px; max-width: 70ch; font-size: 14px; color: var(--ink-soft); }
 .bar { display: grid; grid-template-columns: 116px minmax(0, 1fr) 58px; gap: 14px; align-items: center; }
 .bar + .bar { margin-top: 11px; }
 .bar .who { font-size: 13.5px; }
-.bar .track { height: 18px; background: var(--shade); box-shadow: inset 0 0 0 1px var(--rule); }
+.bar .track { height: 18px; background: var(--shade); border-radius: 3px;
+              box-shadow: inset 0 0 0 1px var(--rule); }
 .bar .track i {
   display: block; height: 100%; min-width: 2px;
 }
@@ -287,7 +352,8 @@ _CSS = BASE_CSS + """
 .bar .val { font-size: 15px; font-weight: 650; text-align: right; font-variant-numeric: tabular-nums; }
 /* one chunk from each run, facing each other */
 .facing { display: grid; grid-template-columns: 1fr 1fr; gap: 1px; background: var(--rule);
-          border: 1px solid var(--rule); border-top: 0; }
+          border: 1px solid var(--rule); border-top: 0;
+          border-radius: 0 0 var(--r) var(--r); overflow: hidden; }
 .side { background: var(--sheet); padding: 20px 24px 22px; }
 .side h4 { margin: 0 0 12px; font-size: 13.5px; font-weight: 650; }
 .side .text {
@@ -307,20 +373,21 @@ _CSS = BASE_CSS + """
 .empty { color: var(--ink-soft); font-style: italic; font-size: 14px; }
 
 @media (max-width: 900px) {
-  .layout { grid-template-columns: 1fr; gap: 0; padding: 0 18px 72px; }
-  .rail { position: static; padding-top: 28px; }
-  .rail ol { display: flex; flex-wrap: wrap; border-left: 0; }
-  .rail a { border-left: 0; border-bottom: 2px solid transparent; padding: 6px 14px 6px 0; }
+  .layout { padding: 0 18px 72px; }
+  .rail { display: flex; flex-wrap: wrap; }
+  .rail a { border-left: 0; margin-left: 0; padding: 5px 14px 5px 0; }
   .rail .last { margin: 0; padding: 0; border-top: 0; }
-  .stage { padding-top: 48px; }
+  .stage { padding: 28px 20px 32px; }
   .lede, .out { margin-left: 0; }
   .overlay { grid-template-columns: 1fr; }
   .scores { grid-template-columns: repeat(2, 1fr); }
 }
 """
 
-#: Marks the rail entry for whichever stage is on screen. Scroll is the
-#: only thing that moves on this page — nothing animates on its own.
+#: Two things. The rail entry for whichever stage is on screen gets
+#: marked, and any link to a page image or a crop opens it over the
+#: page instead of navigating to the bitmap. Scroll is the only thing
+#: that moves on this page — nothing animates on its own.
 _SCRIPT = """
 const links = [...document.querySelectorAll('.rail a')];
 const seen = new Map();
@@ -331,6 +398,35 @@ const io = new IntersectionObserver((entries) => {
   links.forEach(a => a.setAttribute('aria-current', String(a.hash === '#' + best)));
 }, { threshold: [0, 0.15, 0.4, 0.75] });
 document.querySelectorAll('.stage').forEach(s => io.observe(s));
+
+const zoom = document.querySelector('.zoom');
+const shown = zoom.querySelector('img');
+let cameFrom = null;
+
+function open(href, label) {
+  cameFrom = document.activeElement;
+  shown.src = href;
+  shown.alt = label || '';
+  zoom.hidden = false;
+  zoom.querySelector('.shut').focus();
+}
+function shut() {
+  zoom.hidden = true;
+  shown.removeAttribute('src');
+  if (cameFrom) cameFrom.focus();
+}
+
+/* every link that ends at an image, wherever on the page it is */
+document.addEventListener('click', (e) => {
+  const a = e.target.closest('a[href*="/page/"], a[href*="/artifact/"]');
+  if (!a || e.metaKey || e.ctrlKey || e.shiftKey || e.button !== 0) return;
+  e.preventDefault();
+  const img = a.querySelector('img');
+  open(a.getAttribute('href'), img ? img.alt : a.textContent.trim());
+});
+
+zoom.addEventListener('click', (e) => { if (e.target !== shown) shut(); });
+document.addEventListener('keydown', (e) => { if (e.key === 'Escape' && !zoom.hidden) shut(); });
 """
 
 
@@ -404,7 +500,7 @@ def _box2(result: IngestionResult, pid: str) -> str:
         )
     shown = result.pages[:THUMBNAIL_LIMIT]
     strip = "".join(
-        f"<a href='/paper/{pid}/page/{p.page_index}' target='_blank'>"
+        f"<a href='/paper/{pid}/page/{p.page_index}'>"
         f"<img src='/paper/{pid}/page/{p.page_index}' loading='lazy' "
         f"alt='Page {p.page_index + 1}'>"
         f"<em class='pno mono'>{p.page_index + 1}</em></a>"
@@ -451,14 +547,14 @@ def _box3(result: IngestionResult, pid: str) -> str:
         links = ""
     else:
         picture = (
-            f"<a href='/paper/{pid}/page/{busiest}/layout' target='_blank'>"
+            f"<a href='/paper/{pid}/page/{busiest}/layout'>"
             f"<img src='/paper/{pid}/page/{busiest}/layout' loading='lazy' "
             f"alt='Page {busiest + 1} with its detected regions outlined and "
             f"numbered in reading order'></a>"
         )
         others = sorted(candidates)[:10]
         links = "<div class='pagelinks'><span class='soft'>Same view, other pages:</span>" + "".join(
-            f"<a href='/paper/{pid}/page/{p}/layout' target='_blank'>{p + 1}</a>"
+            f"<a href='/paper/{pid}/page/{p}/layout'>{p + 1}</a>"
             for p in others
             if p != busiest
         ) + "</div>"
@@ -576,7 +672,7 @@ def _box6(result: IngestionResult, pid: str) -> str:
         caption = a.caption or "No caption printed beside it."
         if a.image_path:
             picture = (
-                f"<a href='/paper/{pid}/artifact/{i}' target='_blank'>"
+                f"<a href='/paper/{pid}/artifact/{i}'>"
                 f"<img src='/paper/{pid}/artifact/{i}' loading='lazy' "
                 f"alt='{_e(caption[:80])}'></a>"
             )
@@ -598,6 +694,77 @@ def _box6(result: IngestionResult, pid: str) -> str:
         f"<div class='crops'>{''.join(tiles)}</div>"
         f"<p class='note'>{_e(summary.capitalize())}, each cut from the page image "
         f"with the caption the author printed beside it.{_e(more)}</p>"
+    )
+
+
+def _marked(text: str, label) -> str:
+    """One passage, cut down to the words around the reference, with
+    the reference itself marked.
+
+    A link a panel has to take on trust is worth less than one they can
+    read, and the whole chunk would bury the three words that matter.
+    """
+    flat = " ".join(text.split())
+    span = reference_span(flat, label)
+    if span is None:
+        short = flat[:LINK_CHARS]
+        return _e(short + (" …" if len(flat) > LINK_CHARS else ""))
+
+    start, end = span
+    left, right = max(0, start - 62), min(len(flat), end + 74)
+    before = ("… " if left else "") + flat[left:start]
+    after = flat[end:right] + (" …" if right < len(flat) else "")
+    return (
+        f"{_e(before)}<mark class='ref'>{_e(flat[start:end])}</mark>{_e(after)}"
+    )
+
+
+def _box7(result: IngestionResult) -> str:
+    if not result.artifacts:
+        return (
+            "<p class='empty'>Nothing to link: this paper produced no figures, "
+            "tables or equations.</p>"
+        )
+
+    linked = [a for a in result.artifacts if a.linked_chunk_ids]
+    citing = sum(1 for c in result.chunks if c.artifact_ids)
+    mentions = sum(len(a.linked_chunk_ids) for a in result.artifacts)
+    by_id = {c.chunk_id: c for c in result.chunks}
+
+    rows = []
+    for artifact in linked[:LINK_PREVIEW]:
+        label = caption_label(artifact.caption)
+        chunk = by_id.get(artifact.linked_chunk_ids[0])
+        where = f"{artifact.artifact_type.value} · p{artifact.bbox.page + 1}"
+        if chunk is None:
+            continue
+        rows.append(
+            f"<li class='link'>"
+            f"<div class='from'><span class='kind'>{_e(where)}</span>"
+            f"<b>{_e(artifact.caption[:90])}</b></div>"
+            f"<div class='to'><span class='kind'>chunk {chunk.order_index} · "
+            f"{_e(chunk.section.value.replace('_', ' '))}</span>"
+            f"<p>{_marked(chunk.text, label)}</p></div></li>"
+        )
+
+    unlinked = len(result.artifacts) - len(linked)
+    note = (
+        f"{unlinked} of {len(result.artifacts)} are left unlinked: the text never "
+        "names them, and binding one to whichever chunk sits nearest would hand "
+        "Member 2 something that looks like evidence and is not."
+        if unlinked
+        else "Every artifact in this paper is named somewhere in the text."
+    )
+
+    return (
+        "<div class='scores'>"
+        + _readout(f"{len(linked)}/{len(result.artifacts)}", "artifacts linked", "win")
+        + _readout(citing, "chunks cite one")
+        + _readout(mentions, "links in total")
+        + _readout("0", "models used")
+        + "</div>"
+        + (f"<ul class='links'>{''.join(rows)}</ul>" if rows else "")
+        + f"<p class='note'>{_e(note)}</p>"
     )
 
 
@@ -789,6 +956,7 @@ def render_pipeline(
         + f"{_e(label)}</a></li>"
         for key, number, label in STAGES
     )
+    stage_rail = f"<ol class='rail'>{rail}</ol>"
 
     bodies = [
         _stage("s1", "1", "PDF in",
@@ -815,6 +983,11 @@ def render_pipeline(
                "Each figure, table and equation cropped from its page image and kept "
                "with its caption, ready to be bound to the chunks that discuss it.",
                _box6(result, pid)),
+        _stage("s7", "7", "Artifacts bound to the text",
+               "Each figure, table and equation joined to the chunks that cite it, "
+               "using the label the author printed rather than any guess about "
+               "distance.",
+               _box7(result)),
         _stage("ev", "", "Measured against the baseline",
                "What the same PDF looks like without any of the above.",
                _evidence(result, baseline, pid)),
@@ -834,7 +1007,7 @@ def render_pipeline(
         "<meta name='viewport' content='width=device-width, initial-scale=1'>"
         f"<title>{_e(title)} — ingestion pipeline</title>"
         f"<style>{_CSS}</style></head><body>"
-        f"{app_rail('pipeline', paper.paper_id)}"
+        f"{app_rail('pipeline', paper.paper_id, nested=stage_rail)}"
         f"{BRAND}"
         f"<header class='masthead'><div class='inner'>"
         f"<div class='titleblock'><div><h1>{_e(title)}</h1>"
@@ -846,7 +1019,11 @@ def render_pipeline(
         # was the same four destinations twice on one screen.
         f"{_headline(result, baseline)}"
         "</div></header>"
-        f"<div class='layout'><nav class='rail' aria-label='Pipeline stages'>"
-        f"<ol>{rail}</ol></nav><main>{''.join(bodies)}</main></div>"
+        f"<div class='layout'><main>{''.join(bodies)}</main></div>"
+        # the full-size view, which replaces opening a raw image in a
+        # tab of its own with nothing in it to come back by
+        "<div class='zoom' hidden role='dialog' aria-modal='true' aria-label='Full size'>"
+        "<button class='shut' aria-label='Close'>Close &times;</button>"
+        "<img alt=''></div>"
         f"<script>{_SCRIPT}</script></body></html>"
     )

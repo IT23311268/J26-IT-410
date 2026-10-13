@@ -358,10 +358,53 @@ def test_the_rail_marks_where_you_are(ingested):
 
 def test_a_rail_entry_is_never_an_icon_on_its_own(ingested):
     """A panel meeting the service for the first time would have to
-    hover six shapes to find out what they are."""
+    hover six shapes to find out what they are. Pinned as "no anchor
+    ends at its icon" rather than by counting a particular icon size,
+    so resizing them is not a test failure."""
+    result, baseline = ingested
+    for html in (render_pipeline(result, baseline), render_home([])):
+        assert "</svg></a>" not in html
+
+
+def test_the_stages_are_nested_inside_the_rail(ingested):
+    """Two rails down the left of one screen is a navigation scheme
+    explaining itself twice."""
     result, baseline = ingested
     html = render_pipeline(result, baseline)
-    assert html.count("<svg width='20'") == html.count("</svg><span>")
+    nav = html[html.index("<nav class='apprail'"):html.index("</nav>")]
+    for _, _, label in STAGES:
+        assert label in nav
+
+
+def test_the_six_stages_are_called_one_thing_everywhere(ingested):
+    """The landing page used to write its own titles, so a panel read
+    "The PDF arrives" on one page and "PDF in" on the next and had to
+    work out that they were the same six stages."""
+    result, baseline = ingested
+    home = render_home([])
+    walkthrough = render_pipeline(result, baseline)
+    for key, _, label in STAGES:
+        if key == "ev":
+            continue
+        assert label in home, f"{label} is missing from the landing page"
+        assert label in walkthrough
+
+
+def test_each_step_is_numbered_as_a_step():
+    """A bare 3 in the corner of a card is a count as easily as it is
+    a position, and this is an order."""
+    home = render_home([])
+    for n in range(1, 7):
+        assert f">Step {n}</span>" in home
+
+
+def test_an_image_opens_over_the_page_not_in_a_bare_tab(ingested):
+    """A raw bitmap in a tab of its own has a dead back button,
+    because nothing preceded it."""
+    result, baseline = ingested
+    html = render_pipeline(result, baseline)
+    assert "class='zoom'" in html
+    assert "target='_blank'" not in html
 
 
 def test_a_paper_id_with_a_space_is_encoded_in_the_rail(ingested):

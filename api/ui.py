@@ -48,13 +48,15 @@ TOKENS = """
   --ink-soft: #60666d;
   --rule:     #e4e5e3;
   --rule-firm:#b7bab7;
-  --blue:     #1b4f9c;
-  --blue-wash:#e8eef8;
-  --green:    #0f6b4f;
+  --brand:      #0d7a5f;
+  --brand-ink:  #0a5f4a;
+  --brand-wash: #e6f2ed;
+  --brand-deep: #0a4f3e;
   --red:      #9c2b2b;
   --shade:    #f5f6f4;
   --series-baseline: #b8641a;
   --series-ours:     #1b4f9c;
+  --r: 8px;
 }
 @media (prefers-color-scheme: dark) {
   :root {
@@ -64,9 +66,10 @@ TOKENS = """
     --ink-soft: #969ca3;
     --rule:     #262b30;
     --rule-firm:#3a4046;
-    --blue:     #85adf2;
-    --blue-wash:#17273f;
-    --green:    #5fc79b;
+    --brand:      #4cc39b;
+    --brand-ink:  #6fd3b1;
+    --brand-wash: #14302a;
+    --brand-deep: #0b3b30;
     --red:      #e58b8b;
     --shade:    #14181b;
     --series-baseline: #c0832c;
@@ -75,22 +78,31 @@ TOKENS = """
 }
 """
 
-#: --green and --red are a STATUS pair: they mark a region as placed or
-#: unplaced, and they never appear without the word beside them
-#: ("abstract", "unknown"), so nothing is carried by colour alone. They
-#: are deliberately not used for the baseline-vs-us comparison, for two
-#: reasons.
+#: Three colours, and each one means a different kind of thing.
 #:
-#: The first is measurable. Run them through the palette validator and
-#: #9c2b2b against #0f6b4f comes back at ΔE 6.0 under deuteranopia —
-#: a fail. Around one man in twelve cannot separate that pair, and a
-#: progress panel is three or four people.
+#: --brand is the application: the mark, the page you are on, a link, a
+#: button. It never appears on a measurement.
 #:
-#: The second is that red-for-them, green-for-us is an argument rather
-#: than a measurement, and the numbers are strong enough without one.
-#: --series-baseline and --series-ours are two identities, not a verdict:
-#: blue against amber, ΔE 24.5 under protanopia and 23.3 in dark mode,
-#: all six checks passing in both.
+#: --series-baseline and --series-ours are the comparison, and nothing
+#: else: amber against blue, two identities rather than a verdict.
+#: ΔE 24.5 under protanopia and 23.3 in dark mode, all six checks
+#: passing in both — which is why the brand colour had to be chosen
+#: around them rather than the other way about.
+#:
+#: Measured against that pair, #0d7a5f comes back at ΔE 18.5 from the
+#: blue and 21.0 from the amber, 12.9 at its worst under simulated
+#: deuteranopia, protanopia and tritanopia, and 5.29:1 on white. Teal
+#: and petrol were tried first and sat too close to the blue (16.2 and
+#: 12.2), and a wine accent collapsed into --red at 4.3.
+#:
+#: There used to be a green/red STATUS pair as well, marking a region
+#: placed or unplaced. It is gone, for two reasons: that pair measured
+#: ΔE 6.0 apart under deuteranopia, a fail; and it was never carrying
+#: the meaning anyway, because the word is printed beside it. Those
+#: marks are grey now, which freed enough of the wheel for an accent
+#: that clears the comparison.
+#:
+#: --red survives for one job: text that reports a failure.
 
 
 #: Segoe UI first because the demo machine is a Windows laptop; the
@@ -107,7 +119,7 @@ BASE_CSS = TOKENS + """
 
 body {
   margin: 0;
-  padding-left: 78px;      /* the app rail, which is fixed */
+  padding-left: 232px;     /* the app rail, which is fixed */
   background: var(--paper);
   color: var(--ink);
   font: 16px/1.65 "Segoe UI", system-ui, -apple-system, "Helvetica Neue", Arial, sans-serif;
@@ -122,9 +134,9 @@ body {
   font-size: 0.92em;   /* mono runs large next to Segoe UI at the same size */
 }
 
-a { color: var(--blue); text-decoration-thickness: 1px; text-underline-offset: 2px; }
+a { color: var(--brand-ink); text-decoration-thickness: 1px; text-underline-offset: 2px; }
 a:focus-visible, button:focus-visible, summary:focus-visible {
-  outline: 2px solid var(--ink);
+  outline: 2px solid var(--brand);
   outline-offset: 3px;
 }
 
@@ -179,35 +191,64 @@ p  { margin: 0; max-width: 68ch; }
    lists pages. Two rails, two jobs — an editor does the same thing
    with an activity bar beside a file tree. */
 .apprail {
-  position: fixed; left: 0; top: 0; bottom: 0; width: 78px; z-index: 20;
+  position: fixed; left: 0; top: 0; bottom: 0; width: 232px; z-index: 20;
   background: var(--sheet); border-right: 1px solid var(--rule);
-  display: flex; flex-direction: column; align-items: center;
-  padding: 14px 0 16px; gap: 4px; overflow-y: auto;
+  display: flex; flex-direction: column;
+  padding: 16px 12px 18px; overflow-y: auto;
 }
-/* the engine's mark: a page, and the reading order found on it */
-.apprail .mark { display: block; margin-bottom: 14px; color: var(--ink); }
+/* the engine's mark and name, which is also the way home */
+.apprail .top {
+  display: flex; align-items: center; gap: 9px;
+  padding: 2px 8px 16px; color: var(--ink); text-decoration: none;
+}
+.apprail .top svg { color: var(--brand); }
+.apprail .top b { font-size: 13.5px; font-weight: 650; line-height: 1.25; letter-spacing: -0.01em; }
 .apprail a {
-  width: 60px; padding: 9px 2px 7px; border-radius: 4px;
-  display: flex; flex-direction: column; align-items: center; gap: 5px;
-  color: var(--ink-soft); text-decoration: none; text-align: center;
-  font-size: 10.5px; line-height: 1.2; letter-spacing: -0.005em;
+  padding: 8px 10px; border-radius: 6px;
+  display: flex; align-items: center; gap: 10px;
+  color: var(--ink-soft); text-decoration: none;
+  font-size: 13.5px; line-height: 1.3;
 }
-.apprail a svg { stroke: currentColor; fill: none; stroke-width: 1.5;
+.apprail a svg { flex: 0 0 auto; stroke: currentColor; fill: none; stroke-width: 1.5;
                  stroke-linecap: square; stroke-linejoin: miter; }
 .apprail a:hover { color: var(--ink); background: var(--shade); }
-.apprail a[aria-current="page"] { color: var(--ink); background: var(--shade); font-weight: 600; }
+.apprail a[aria-current="page"] {
+  color: var(--brand-ink); background: var(--brand-wash); font-weight: 600;
+}
 .apprail a[aria-current="page"] svg { stroke-width: 1.9; }
-.apprail .foot { margin-top: auto; padding-top: 10px; }
+.apprail .foot { margin-top: auto; padding-top: 12px; border-top: 1px solid var(--rule); }
 
-@media (max-width: 760px) {
+/* The stages of whichever page you are on, nested under it — the one
+   place a second rail would otherwise have to go. Indented to the
+   width of an icon plus its gap, so the stage names hang off the page
+   name the way a sub-list should. */
+.apprail .nest { margin: 2px 0 6px 20px; padding-left: 10px; border-left: 1px solid var(--rule); }
+
+/* The pipeline, standing in the rail on a page that has no paper yet.
+   Not links: there is nothing to scroll to until something has been
+   read, and a dead link is worse than a plain line. */
+.apprail .group { margin: 22px 0 0; padding: 0 10px 8px; font-size: 11.5px;
+                  font-weight: 600; color: var(--brand-ink); letter-spacing: 0.01em; }
+.apprail .railsteps { list-style: none; margin: 0 0 0 10px; padding: 0 0 0 11px;
+                      border-left: 1px solid var(--rule); }
+.apprail .railsteps li { display: flex; gap: 9px; padding: 5px 0; font-size: 12.5px;
+                         line-height: 1.3; color: var(--ink-soft); }
+.apprail .railsteps .n { flex: 0 0 auto; color: var(--brand);
+                         font-family: ui-monospace, "Cascadia Mono", Consolas, monospace; }
+/* the stage that is not built: said once, in the one place a reader
+   would otherwise assume it was */
+.apprail .railsteps .todo { opacity: 0.55; }
+.apprail .railsteps .todo .n::after { content: " ·"; }
+
+@media (max-width: 900px) {
   body { padding-left: 0; }
   .apprail {
-    position: static; width: 100%; flex-direction: row; justify-content: flex-start;
+    position: static; width: 100%;
     border-right: 0; border-bottom: 1px solid var(--rule);
-    padding: 6px 10px; overflow-x: auto;
+    padding: 10px 14px;
   }
-  .apprail .mark { display: none; }
-  .apprail .foot { margin-top: 0; padding-top: 0; }
+  .apprail .top { padding-bottom: 8px; }
+  .apprail .foot { margin-top: 0; border-top: 0; padding-top: 4px; }
 }
 
 @media (prefers-reduced-motion: reduce) {
@@ -243,13 +284,16 @@ _ICONS = {
     "api": "<path d='M7 6 3 10l4 4M13 6l4 4-4 4'/>",
 }
 
-#: The engine's mark: a page, with the reading order found on it.
-_MARK = (
-    "<svg class='mark' width='26' height='26' viewBox='0 0 26 26' aria-hidden='true' "
+#: The engine's mark and name, at the head of the rail. It links home,
+#: because the mark in the corner of an application is the way back
+#: everywhere else, and a demo should not be the exception.
+_TOP = (
+    "<a class='top' href='/'>"
+    "<svg width='24' height='24' viewBox='0 0 26 26' aria-hidden='true' "
     "fill='none' stroke='currentColor' stroke-width='1.6'>"
     "<rect x='3.5' y='2.5' width='19' height='21'/>"
     "<path d='M7 7h5M7 11h5M7 15h5M14 7h5M14 11h5'/>"
-    "</svg>"
+    "</svg><b>Ingestion engine</b></a>"
 )
 
 
@@ -257,12 +301,14 @@ def _entry(key: str, href: str, label: str, current: bool) -> str:
     mark = " aria-current='page'" if current else ""
     return (
         f"<a href='{href}'{mark}>"
-        f"<svg width='20' height='20' viewBox='0 0 20 20' aria-hidden='true'>{_ICONS[key]}</svg>"
+        f"<svg width='18' height='18' viewBox='0 0 20 20' aria-hidden='true'>{_ICONS[key]}</svg>"
         f"<span>{label}</span></a>"
     )
 
 
-def app_rail(current: str = "", paper_id: str = "") -> str:
+def app_rail(
+    current: str = "", paper_id: str = "", nested: str = "", tail: str = ""
+) -> str:
     """The fixed column of destinations, shared by every HTML page.
 
     `paper_id` is what decides the length of the rail. Four of the six
@@ -271,19 +317,39 @@ def app_rail(current: str = "", paper_id: str = "") -> str:
     out rather than shown greyed. A disabled control that is never
     enabled is a dead end with a tooltip; an absent one is simply the
     rail that fits where you are.
+
+    `nested` is markup hung underneath whichever entry is current: the
+    walkthrough passes its stages, so one rail carries both which page
+    you are on and where you are inside it. The alternative was two
+    rails down the left of the same screen, which is a navigation
+    scheme explaining itself twice.
+
+    `tail` is a block below the destinations, for whatever the page
+    wants standing in the rail that is not a place to go. The landing
+    page puts the pipeline there: with no paper chosen the rail is two
+    entries and a great deal of nothing, and what belongs in that space
+    is the thing the service does.
     """
     from urllib.parse import quote
 
-    out = [_MARK, _entry("papers", "/", "Papers", current == "home")]
+    def nest_after(key: str) -> str:
+        return f"<div class='nest'>{nested}</div>" if nested and current == key else ""
+
+    out = [_TOP, _entry("papers", "/", "Papers", current == "home"), nest_after("home")]
 
     if paper_id:
         pid = quote(paper_id, safe="")
         out += [
             _entry("pipeline", f"/pipeline/{pid}", "Pipeline", current == "pipeline"),
+            nest_after("pipeline"),
             _entry("pages", f"/gallery/{pid}", "Pages", current == "gallery"),
+            nest_after("gallery"),
             _entry("compare", f"/compare/{pid}", "Compare", current == "compare"),
             _entry("json", f"/paper/{pid}", "JSON", False),
         ]
+
+    if tail:
+        out.append(tail)
 
     out.append("<div class='foot'>" + _entry("api", "/docs", "API", False) + "</div>")
     return f"<nav class='apprail' aria-label='Sections'>{''.join(out)}</nav>"
