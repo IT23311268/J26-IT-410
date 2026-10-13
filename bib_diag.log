@@ -1,0 +1,37 @@
+﻿.\venv\Scripts\python.exe : C:\Users\MMSSI\Desktop\Hallucination Detection & Citation 
+Verification\backend\test_bib_diag.py:3: SyntaxWarning: invalid escape sequence '\S'
+At line:1 char:1
++ .\venv\Scripts\python.exe test_bib_diag.py "uploads/Graphing_the_Trut ...
++ ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    + CategoryInfo          : NotSpecified: (C:\Users\MMSSI\...e sequence '\S':String) [], RemoteException
+    + FullyQualifiedErrorId : NativeCommandError
+ 
+  Run: .\venv\Scripts\python.exe test_bib_diag.py uploads\<main_paper.pdf>
+References section starts at line index: 273
+
+=== RAW BIB TEXT (first 3000 chars, repr) ===
+'[1] A. Zubiaga, ΓÇ£Natural language processing in the era of large language models,ΓÇ¥ Front. Artif.\nIntell., vol. 6, p. 1350306, 2023.\n[2] J. Maynez, S. Narayan, B. Bohnet, and R. McDonald, ΓÇ£On faithfulness and factuality in\nabstractive summarization,ΓÇ¥ in Proceedings of the 58th Annual Meeting of the Association for\nComputational Linguistics, D. Jurafsky, J. Chai, N. Schluter, and J. Tetreault, Eds.\nOnline:\nAssociation for Computational Linguistics, Jul. 2020, pp. 1906ΓÇô1919. [Online]. Available:\nhttps://aclanthology.org/2020.acl-main.173/\n[3] A. Addlesee, ΓÇ£Grounding LLMs to in-prompt instructions: Reducing hallucinations caused\nby static pre-training knowledge,ΓÇ¥ in Proceedings of Safety4ConvAI: The Third Workshop\non Safety for Conversational AI @ LREC-COLING 2024, T. Dinkar, G. Attanasio,\nA. Cercas Curry, I. Konstas, D. Hovy, and V. Rieser, Eds.\nTorino, Italia: ELRA and ICCL,\nMay 2024, pp. 1ΓÇô7. [Online]. Available: https://aclanthology.org/2024.safety4convai-1.1/\n[4] D. Anh-Hoang, V. Tran, and L.-M. Nguyen, ΓÇ£Survey and analysis of hallucinations\nin large language models:\nattribution to prompting strategies or model behavior,ΓÇ¥\nFrontiers in Artificial Intelligence,\nvol. 8,\nSep. 2025. [Online]. Available:\nhttp:\n//dx.doi.org/10.3389/frai.2025.1622292\n[5] P. Manakul, A. Liusie, and M. J. F. Gales, ΓÇ£SelfCheckGPT: Zero-resource black-box halluci-\nnation detection for generative large language models,ΓÇ¥ 2023.\n[6] S. Wiegreffe and Y. Pinter, ΓÇ£Attention is not not explanation,ΓÇ¥ 2019.\n[7] H. Sansford, N. Richardson, H. P. Maretic, and J. N. Saada, ΓÇ£GraphEval: A Knowledge-Graph\nbased LLM hallucination evaluation framework,ΓÇ¥ 2024.\n[8] Z. J. Wang, F. Hohman, and D. H. Chau, ΓÇ£WizMap: Scalable interactive visualization\nfor\nexploring\nlarge\nmachine\nlearning\nembeddings,ΓÇ¥\nin\nProceedings\nof\nthe\n61st\nAnnual Meeting of the Association for Computational Linguistics (Volume 3:\nSystem\nDemonstrations),\nD. Bollegala,\nR. Huang,\nand A. Ritter,\nEds.\nToronto,\nCanada:\nAssociation for Computational Linguistics, Jul. 2023, pp. 516ΓÇô523. [Online]. Available:\nhttps://aclanthology.org/2023.acl-demo.50/\n[9] R. Qiu, Y. Tu, P.-Y. Yen, and H.-W. Shen, ΓÇ£VADIS: A visual analytics pipeline for dynamic\ndocument representation and information-seeking,ΓÇ¥ 2025.\n[10] P. Hase, M. Diab, A. Celikyilmaz, X. Li, Z. Kozareva, V. Stoyanov, M. Bansal, and\nS. Iyer, ΓÇ£Methods for measuring, updating, and visualizing factual beliefs in language\n8\n\nmodels,ΓÇ¥ in Proceedings of the 17th Conference of the European Chapter of the Association\nfor Computational Linguistics, A. Vlachos and I. Augenstein, Eds.\nDubrovnik, Croatia:\nAssociation for Computational Linguistics, May 2023, pp. 2714ΓÇô2731. [Online]. Available:\nhttps://aclanthology.org/2023.eacl-main.199/\n[11] A. R. Fabbri, W. Kry┼¢ci┼äski, B. McCann, C. Xiong, R. Socher, and D. Radev,\nΓÇ£SummEval:\nRe-evaluating summarization evaluation,ΓÇ¥ Transactions of the Association\nfor\nComputational\nLinguistics,\nvol.\n9,\npp.\n391ΓÇô409,\n2021.\n[Online].\nAvailable:\nhttps://aclanthology.or'
+
+=== [N] markers found in bib raw: ['1', '2', '3', '4', '5', '6', '7', '8', '9', '10', '11', '12', '13'] ===
+=== 'N.' markers found: 1 ===
+
+=== extract_bibliography_section output length: 3340 chars ===
+First 1500 chars (repr):
+'[1] A. Zubiaga, ΓÇ£Natural language processing in the era of large language models,ΓÇ¥ Front. Artif.\nIntell., vol. 6, p. 1350306, 2023.\n[2] J. Maynez, S. Narayan, B. Bohnet, and R. McDonald, ΓÇ£On faithfulness and factuality in\nabstractive summarization,ΓÇ¥ in Proceedings of the 58th Annual Meeting of the Association for\nComputational Linguistics, D. Jurafsky, J. Chai, N. Schluter, and J. Tetreault, Eds.\nOnline:\nAssociation for Computational Linguistics, Jul. 2020, pp. 1906ΓÇô1919. [Online]. Available:\nhttps://aclanthology.org/2020.acl-main.173/\n[3] A. Addlesee, ΓÇ£Grounding LLMs to in-prompt instructions: Reducing hallucinations caused\nby static pre-training knowledge,ΓÇ¥ in Proceedings of Safety4ConvAI: The Third Workshop\non Safety for Conversational AI @ LREC-COLING 2024, T. Dinkar, G. Attanasio,\nA. Cercas Curry, I. Konstas, D. Hovy, and V. Rieser, Eds.\nTorino, Italia: ELRA and ICCL,\nMay 2024, pp. 1ΓÇô7. [Online]. Available: https://aclanthology.org/2024.safety4convai-1.1/\n[4] D. Anh-Hoang, V. Tran, and L.-M. Nguyen, ΓÇ£Survey and analysis of hallucinations\nin large language models:\nattribution to prompting strategies or model behavior,ΓÇ¥\nFrontiers in Artificial Intelligence,\nvol. 8,\nSep. 2025. [Online]. Available:\nhttp:\n//dx.doi.org/10.3389/frai.2025.1622292\n[5] P. Manakul, A. Liusie, and M. J. F. Gales, ΓÇ£SelfCheckGPT: Zero-resource black-box halluci-\nnation detection for generative large language models,ΓÇ¥ 2023.\n[6] S. Wiegreffe and Y. Pinter, ΓÇ£Attention is not not explanation,ΓÇ¥ 2019.\n[7] H'
+
+=== Parsed 13 bibliography entries ===
+Reference numbers: ['1', '2', '3', '4', '5', '6', '7', '8', '9', '10', '11', '12', '13']
+
+  [1] A. Zubiaga, ΓÇ£Natural language processing in the era of large language models,ΓÇ¥ Front. Artif. Intell., vol. 6, p. 1350306
+  [2] J. Maynez, S. Narayan, B. Bohnet, and R. McDonald, ΓÇ£On faithfulness and factuality in abstractive summarization,ΓÇ¥ in Pro
+  [3] A. Addlesee, ΓÇ£Grounding LLMs to in-prompt instructions: Reducing hallucinations caused by static pre-training knowledge,
+  [4] D. Anh-Hoang, V. Tran, and L.-M. Nguyen, ΓÇ£Survey and analysis of hallucinations in large language models: attribution to
+  [5] P. Manakul, A. Liusie, and M. J. F. Gales, ΓÇ£SelfCheckGPT: Zero-resource black-box halluci- nation detection for generati
+  [6] S. Wiegreffe and Y. Pinter, ΓÇ£Attention is not not explanation,ΓÇ¥ 2019.
+  [7] H. Sansford, N. Richardson, H. P. Maretic, and J. N. Saada, ΓÇ£GraphEval: A Knowledge-Graph based LLM hallucination evalua
+  [8] Z. J. Wang, F. Hohman, and D. H. Chau, ΓÇ£WizMap: Scalable interactive visualization for exploring large machine learning 
+  [9] R. Qiu, Y. Tu, P.-Y. Yen, and H.-W. Shen, ΓÇ£VADIS: A visual analytics pipeline for dynamic document representation and in
+  [10] P. Hase, M. Diab, A. Celikyilmaz, X. Li, Z. Kozareva, V. Stoyanov, M. Bansal, and S. Iyer, ΓÇ£Methods for measuring, updat
+  [11] A. R. Fabbri, W. Kry┼¢ci┼äski, B. McCann, C. Xiong, R. Socher, and D. Radev, ΓÇ£SummEval: Re-evaluating summarization evalua
+  [12] O. Honovich, R. Aharoni, J. Herzig, H. Taitelbaum, D. Kukliansy, V. Cohen, T. Scialom, I. Szpektor, A. Hassidim, and Y. 
+  [13] Z. Xue, R. Li, Q. Dai, and Z. Jiang, ΓÇ£CorefDRE: Document-level relation extraction with coreference resolution,ΓÇ¥ 2022. 9

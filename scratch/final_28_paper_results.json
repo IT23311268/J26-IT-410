@@ -1,0 +1,295 @@
+{
+  "summary": {
+    "REAL": 24,
+    "UNCERTAIN": 2,
+    "FAKE": 2
+  },
+  "internal": {
+    "VERIFIED_REAL": 24,
+    "REAL_METADATA_MISMATCH": 1,
+    "UNCERTAIN": 1,
+    "LIKELY_FABRICATED": 2
+  },
+  "details": [
+    {
+      "index": 1,
+      "ref": "T. Brown et al., “Language Models are Few-Shot Learners,” in Proc. NeurIPS, 2020.",
+      "frontend": "REAL",
+      "internal": "VERIFIED_REAL",
+      "matched_source": "arXiv (Search)",
+      "matched_title": "Language Models are Few-Shot Learners",
+      "reason": "Strong title, author, and year match found on arXiv (Search).",
+      "confidence": 0.95
+    },
+    {
+      "index": 2,
+      "ref": "H. Touvron et al., “LLaMA: Open and Efﬁcient Foundation Language Models,” 2023.",
+      "frontend": "REAL",
+      "internal": "VERIFIED_REAL",
+      "matched_source": "arXiv (Search)",
+      "matched_title": "LLaMA: Open and Efficient Foundation Language Models",
+      "reason": "Strong title, author, and year match found on arXiv (Search).",
+      "confidence": 0.95
+    },
+    {
+      "index": 3,
+      "ref": "A. Chowdhery et al., “PaLM: Scaling Language Modeling with Path- ways,” 2022.",
+      "frontend": "REAL",
+      "internal": "VERIFIED_REAL",
+      "matched_source": "arXiv (Search)",
+      "matched_title": "PaLM: Scaling Language Modeling with Pathways",
+      "reason": "Strong title, author, and year match found on arXiv (Search).",
+      "confidence": 0.95
+    },
+    {
+      "index": 4,
+      "ref": "Z. Ji et al., “Survey of Hallucination in Natural Language Generation,” ACM Computing Surveys, 2023.",
+      "frontend": "REAL",
+      "internal": "VERIFIED_REAL",
+      "matched_source": "Crossref (Search)",
+      "matched_title": "Survey of Hallucination in Natural Language Generation",
+      "reason": "Strong title, author, and year match found on Crossref (Search).",
+      "confidence": 0.95
+    },
+    {
+      "index": 5,
+      "ref": "P. Lewis et al., “Retrieval-Augmented Generation for Knowledge- Intensive NLP Tasks,” NeurIPS, 2020.",
+      "frontend": "REAL",
+      "internal": "VERIFIED_REAL",
+      "matched_source": "arXiv (Search)",
+      "matched_title": "Retrieval-Augmented Generation for Knowledge-Intensive NLP Tasks",
+      "reason": "Strong title, author, and year match found on arXiv (Search).",
+      "confidence": 0.95
+    },
+    {
+      "index": 6,
+      "ref": "K. Guu et al., “REALM: Retrieval-Augmented Language Model Pre- training,” ICML, 2020.",
+      "frontend": "REAL",
+      "internal": "VERIFIED_REAL",
+      "matched_source": "arXiv (Search)",
+      "matched_title": "REALM: Retrieval-Augmented Language Model Pre-Training",
+      "reason": "Authoritative record found on arXiv (Search) with compatible metadata.",
+      "confidence": 0.7323
+    },
+    {
+      "index": 7,
+      "ref": "G. Izacard and E. Grave, “Leveraging Passage Retrieval with Generative Models,” ACL, 2021.",
+      "frontend": "REAL",
+      "internal": "VERIFIED_REAL",
+      "matched_source": "Crossref (Search)",
+      "matched_title": "Leveraging Passage Retrieval with Generative Models for Open Domain Question Answering",
+      "reason": "Authoritative record found on Crossref (Search) with compatible metadata.",
+      "confidence": 0.775
+    },
+    {
+      "index": 8,
+      "ref": "S. Bowman et al., “A Large Annotated Corpus for Learning Natural Language Inference,” EMNLP, 2015.",
+      "frontend": "REAL",
+      "internal": "VERIFIED_REAL",
+      "matched_source": "Crossref (Search)",
+      "matched_title": "A large annotated corpus for learning natural language inference",
+      "reason": "Strong title, author, and year match found on Crossref (Search).",
+      "confidence": 0.95
+    },
+    {
+      "index": 9,
+      "ref": "A. Williams, N. Nangia, and S. Bowman, “A Broad-Coverage Challenge Corpus for Natural Language Inference,” NAACL, 2018.",
+      "frontend": "REAL",
+      "internal": "VERIFIED_REAL",
+      "matched_source": "Crossref (Search)",
+      "matched_title": "A Broad-Coverage Challenge Corpus for Sentence Understanding through Inference",
+      "reason": "Authoritative record found on Crossref (Search) with strong author and year confirmation.",
+      "confidence": 0.6875
+    },
+    {
+      "index": 10,
+      "ref": "J. Thorne et al., “FEVER: A Large-scale Dataset for Fact Extraction and Veriﬁcation,” NAACL, 2018.",
+      "frontend": "REAL",
+      "internal": "VERIFIED_REAL",
+      "matched_source": "Crossref (Search)",
+      "matched_title": "FEVER: a Large-scale Dataset for Fact Extraction and VERification",
+      "reason": "Strong title, author, and year match found on Crossref (Search).",
+      "confidence": 0.95
+    },
+    {
+      "index": 11,
+      "ref": "P. Minervini et al., “HaluEval: A Large-Scale Hallucination Evaluation Benchmark,” 2023.",
+      "frontend": "UNCERTAIN",
+      "internal": "REAL_METADATA_MISMATCH",
+      "matched_source": "Crossref (Search)",
+      "matched_title": "HaluEval: A Large-Scale Hallucination Evaluation Benchmark for Large Language Models",
+      "reason": "Real publication found, but author metadata differs from the citation.",
+      "confidence": 0.575
+    },
+    {
+      "index": 12,
+      "ref": "S. Lin et al., “TruthfulQA: Measuring How Models Mimic Human Falsehoods,” ACL, 2021.",
+      "frontend": "REAL",
+      "internal": "VERIFIED_REAL",
+      "matched_source": "Crossref (Search)",
+      "matched_title": "TruthfulQA: Measuring How Models Mimic Human Falsehoods",
+      "reason": "Strong title, author, and year match found on Crossref (Search).",
+      "confidence": 0.93
+    },
+    {
+      "index": 13,
+      "ref": "P. Manakul, A. Liusie, and M. Gales, “SelfCheckGPT: Zero-Resource Black-Box Hallucination Detection,” EMNLP, 2023.",
+      "frontend": "REAL",
+      "internal": "VERIFIED_REAL",
+      "matched_source": "Crossref (Search)",
+      "matched_title": "SelfCheckGPT: Zero-Resource Black-Box Hallucination Detection for Generative Large Language Models",
+      "reason": "Authoritative record found on Crossref (Search) with compatible metadata.",
+      "confidence": 0.775
+    },
+    {
+      "index": 14,
+      "ref": "J. Maynez et al., “On Faithfulness and Factuality in Abstractive Sum- marization,” ACL, 2020.",
+      "frontend": "REAL",
+      "internal": "VERIFIED_REAL",
+      "matched_source": "Crossref (Search)",
+      "matched_title": "On Faithfulness and Factuality in Abstractive Summarization",
+      "reason": "Strong title, author, and year match found on Crossref (Search).",
+      "confidence": 0.95
+    },
+    {
+      "index": 15,
+      "ref": "Z. Jiang et al., “How Can We Know What Language Models Know?” TACL, 2021.",
+      "frontend": "REAL",
+      "internal": "VERIFIED_REAL",
+      "matched_source": "Crossref (Search)",
+      "matched_title": "How Can We Know What Language Models Know?",
+      "reason": "Strong title, author, and year match found on Crossref (Search).",
+      "confidence": 0.93
+    },
+    {
+      "index": 16,
+      "ref": "N. Reimers and I. Gurevych, “Sentence-BERT: Sentence Embeddings using Siamese BERT Networks,” EMNLP, 2019.",
+      "frontend": "REAL",
+      "internal": "VERIFIED_REAL",
+      "matched_source": "Crossref (Search)",
+      "matched_title": "Sentence-BERT: Sentence Embeddings using Siamese BERT-Networks",
+      "reason": "Strong title, author, and year match found on Crossref (Search).",
+      "confidence": 0.95
+    },
+    {
+      "index": 17,
+      "ref": "J. Johnson, M. Douze, and H. J´egou, “Billion-Scale Similarity Search with FAISS,” IEEE Transactions on Big Data, 2019.",
+      "frontend": "REAL",
+      "internal": "VERIFIED_REAL",
+      "matched_source": "Crossref (Search)",
+      "matched_title": "Billion-Scale Similarity Search with GPUs",
+      "reason": "Authoritative record found on Crossref (Search) with compatible metadata.",
+      "confidence": 0.619
+    },
+    {
+      "index": 18,
+      "ref": "S. Robertson and H. Zaragoza, “The Probabilistic Relevance Framework: BM25 and Beyond,” Foundations and Trends in IR, 2009.",
+      "frontend": "REAL",
+      "internal": "VERIFIED_REAL",
+      "matched_source": "Crossref (Search)",
+      "matched_title": "The Probabilistic Relevance Framework: BM25 and Beyond",
+      "reason": "Strong title, author, and year match found on Crossref (Search).",
+      "confidence": 0.95
+    },
+    {
+      "index": 19,
+      "ref": "T. Chen and C. Guestrin, “XGBoost: A Scalable Tree Boosting System,” KDD, 2016.",
+      "frontend": "REAL",
+      "internal": "VERIFIED_REAL",
+      "matched_source": "arXiv (Search)",
+      "matched_title": "XGBoost: A Scalable Tree Boosting System",
+      "reason": "Strong title, author, and year match found on arXiv (Search).",
+      "confidence": 0.95
+    },
+    {
+      "index": 20,
+      "ref": "J. Devlin et al., “BERT: Pre-training of Deep Bidirectional Transform- ers,” NAACL, 2019.",
+      "frontend": "REAL",
+      "internal": "VERIFIED_REAL",
+      "matched_source": "Crossref (Title)",
+      "matched_title": "BERT: Pre-training of Deep Bidirectional Transformers for Language Understanding",
+      "reason": "Strong title, author, and year match found on Crossref (Title).",
+      "confidence": 0.95
+    },
+    {
+      "index": 21,
+      "ref": "C. Raffel et al., “Exploring the Limits of Transfer Learning with a Uniﬁed Text-to-Text Transformer,” JMLR, 2020.",
+      "frontend": "REAL",
+      "internal": "VERIFIED_REAL",
+      "matched_source": "arXiv (Search)",
+      "matched_title": "Exploring the Limits of Transfer Learning with a Unified Text-to-Text Transformer",
+      "reason": "Strong title, author, and year match found on arXiv (Search).",
+      "confidence": 0.93
+    },
+    {
+      "index": 22,
+      "ref": "A. Vaswani et al., “Attention Is All You Need,” NeurIPS, 2017.",
+      "frontend": "REAL",
+      "internal": "VERIFIED_REAL",
+      "matched_source": "Crossref (Search)",
+      "matched_title": "Attention Is All You Need",
+      "reason": "Strong title, author, and year match found on Crossref (Search).",
+      "confidence": 0.9
+    },
+    {
+      "index": 23,
+      "ref": "A. Radford et al., “Language Models are Unsupervised Multitask Learners,” OpenAI, 2019.",
+      "frontend": "REAL",
+      "internal": "VERIFIED_REAL",
+      "matched_source": "Official Report",
+      "matched_title": "Language Models are Unsupervised Multitask Learners",
+      "reason": "Strong title, author, and year match found on Official Report.",
+      "confidence": 0.95
+    },
+    {
+      "index": 24,
+      "ref": "F. Petroni et al., “Language Models as Knowledge Bases?” EMNLP, 2019.",
+      "frontend": "REAL",
+      "internal": "VERIFIED_REAL",
+      "matched_source": "Crossref (Search)",
+      "matched_title": "Language Models as Knowledge Bases?",
+      "reason": "Strong title, author, and year match found on Crossref (Search).",
+      "confidence": 0.95
+    },
+    {
+      "index": 25,
+      "ref": "P. Laban et al., “Summarization Benchmarks for Hallucination Detec- tion,” 2023.",
+      "frontend": "FAKE",
+      "internal": "LIKELY_FABRICATED",
+      "matched_source": "OpenAlex",
+      "matched_title": "FactCHD: Benchmarking Fact-Conflicting Hallucination Detection",
+      "reason": "No credible scholarly record found across configured sources.",
+      "confidence": 0.2863
+    },
+    {
+      "index": 26,
+      "ref": "N. Dziri et al., “Faithfulness in Natural Language Generation,” TACL, 2022.",
+      "frontend": "UNCERTAIN",
+      "internal": "UNCERTAIN",
+      "matched_source": "Crossref (Search)",
+      "matched_title": "Faithfulness of Natural Language Generation",
+      "reason": "Partial scholarly metadata match; manual review recommended.",
+      "confidence": 0.4414
+    },
+    {
+      "index": 27,
+      "ref": "O. Honovich et al., “QA-based Fact Veriﬁcation,” ACL, 2022.",
+      "frontend": "FAKE",
+      "internal": "LIKELY_FABRICATED",
+      "matched_source": "Crossref (Search)",
+      "matched_title": "LMentry: A Language Model Benchmark of Elementary Language Tasks",
+      "reason": "No credible scholarly record found across configured sources.",
+      "confidence": 0.3594
+    },
+    {
+      "index": 28,
+      "ref": "Y. Gao et al., “Retrieval-Augmented Generation for Large Language Models: A Survey,” 2023. Published by : International Journal of Engineering Research & Technology (IJERT) https://www.ijert.org/ ISSN: 2278-0181 An International Peer-Reviewed Journal Vol. 15 Issue 04 , April - 2026 IJERTV15IS043963 Page 6 (This work is licensed under a Creative Commons Attribution 4.0 International License.)",
+      "frontend": "REAL",
+      "internal": "VERIFIED_REAL",
+      "matched_source": "arXiv (Search)",
+      "matched_title": "Retrieval-Augmented Generation for Large Language Models: A Survey",
+      "reason": "Strong title, author, and year match found on arXiv (Search).",
+      "confidence": 0.95
+    }
+  ]
+}

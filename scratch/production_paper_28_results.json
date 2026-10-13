@@ -1,0 +1,10 @@
+{
+  "total_extracted": 0,
+  "total_analyzed": 0,
+  "summary": {
+    "real": 0,
+    "fake": 0,
+    "uncertain": 0
+  },
+  "details": []
+}
