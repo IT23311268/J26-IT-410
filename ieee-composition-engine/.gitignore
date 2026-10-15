@@ -5,3 +5,4 @@ __pycache__/
 data/output/
 .pytest_cache/
 .DS_Store
+data/cache/

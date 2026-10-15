@@ -1,0 +1,137 @@
+{
+  "schema": "ieee-composition/verified-content/v1",
+  "title": "Automated Detection of Pulmonary Nodules in Chest CT Images Using Convolutional Neural Networks",
+  "authors": [
+    "K. M. Perera",
+    "S. Fernando",
+    "A. Jayasuriya"
+  ],
+  "affiliations": [
+    "Department of Computer Science, University of Colombo, Sri Lanka"
+  ],
+  "abstract": "Lung cancer remains one of the leading causes of cancer related death worldwide, and early detection of pulmonary nodules substantially improves patient survival. Manual inspection of computed tomography volumes is slow and suffers from inter observer variability. In this work we present a convolutional neural network that detects pulmonary nodules in chest CT slices. The model was trained on 888 annotated scans and reached a sensitivity of 94.2 percent at 2.1 false positives per scan, outperforming the three baseline methods we compared against.",
+  "keywords": [
+    "lung cancer",
+    "computed tomography",
+    "deep learning",
+    "nodule detection",
+    "medical imaging"
+  ],
+  "sections": [
+    {
+      "heading": "Background",
+      "level": 1,
+      "content": [
+        {
+          "type": "paragraph",
+          "text": "Lung cancer accounted for approximately 1.8 million deaths in 2020 (Sung et al., 2021). Screening programmes based on low dose computed tomography have been shown to reduce mortality by up to 20 percent, but they generate an enormous volume of images that radiologists must read. A single chest CT study can contain more than 300 slices, and a nodule may occupy only a handful of pixels in one of them.",
+          "verified": true
+        },
+        {
+          "type": "paragraph",
+          "text": "Computer aided detection systems were introduced to reduce this burden. Early systems relied on hand engineered features such as shape compactness and intensity thresholds, which generalised poorly across scanners (Firmino et al., 2016). The arrival of deep learning changed this picture, since features are learned directly from data.",
+          "verified": true
+        }
+      ]
+    },
+    {
+      "heading": "Previous Studies",
+      "level": 1,
+      "content": [
+        {
+          "type": "paragraph",
+          "text": "Setio et al. (2016) proposed a multi view convolutional network that aggregates predictions from nine planes through a fixed fusion rule, reporting a sensitivity of 90.1 percent. Dou et al. (2017) extended this idea with three dimensional convolutions and an online hard negative mining strategy. More recently, attention based architectures have been applied to the same task with mixed results, and several authors note that reported figures are difficult to compare because evaluation protocols differ between studies.",
+          "verified": true
+        }
+      ]
+    },
+    {
+      "heading": "Our Approach",
+      "level": 1,
+      "content": []
+    },
+    {
+      "heading": "Dataset",
+      "level": 2,
+      "content": [
+        {
+          "type": "paragraph",
+          "text": "We used the LUNA16 collection, which contains 888 thoracic CT scans with nodule annotations agreed by at least three of four radiologists. Scans were resampled to an isotropic spacing of 1 mm and intensities were clipped to the range -1000 to 400 Hounsfield units before being rescaled to the interval zero to one.",
+          "verified": true
+        },
+        {
+          "type": "paragraph",
+          "verified": false,
+          "text": "Our model is guaranteed to detect every nodule in any scanner."
+        }
+      ]
+    },
+    {
+      "heading": "Network Architecture",
+      "level": 2,
+      "content": [
+        {
+          "type": "paragraph",
+          "text": "The detector follows an encoder decoder design with five downsampling stages. Each stage applies two three dimensional convolutions with batch normalisation and a rectified linear activation. The loss function combines a Dice term with a focal term in order to cope with the severe class imbalance between nodule and background voxels:",
+          "verified": true
+        },
+        {
+          "type": "equation",
+          "text": "L = alpha * L_dice + (1 - alpha) * L_focal (1)"
+        },
+        {
+          "type": "paragraph",
+          "text": "where alpha was fixed at 0.7 after a small grid search on the validation fold.",
+          "verified": true
+        },
+        {
+          "type": "figure",
+          "number": 1,
+          "caption": "Overall architecture of the proposed detection network."
+        }
+      ]
+    },
+    {
+      "heading": "Experiments and Findings",
+      "level": 1,
+      "content": [
+        {
+          "type": "paragraph",
+          "text": "Training used the Adam optimiser with an initial learning rate of 0.001, halved whenever validation loss failed to improve for five epochs. We report sensitivity at a fixed operating point of two false positives per scan, following the convention used by the LUNA16 challenge. The proposed model reached 94.2 percent sensitivity, compared with 90.1 percent for the multi view baseline and 92.0 percent for the three dimensional baseline.",
+          "verified": true
+        },
+        {
+          "type": "table",
+          "number": 1,
+          "caption": "Comparison of detection performance on the test fold."
+        },
+        {
+          "type": "paragraph",
+          "text": "An ablation study confirmed that the focal term contributed roughly 1.8 percentage points of the improvement, while isotropic resampling contributed a further 0.9 points.",
+          "verified": true
+        }
+      ]
+    },
+    {
+      "heading": "Final Remarks",
+      "level": 1,
+      "content": [
+        {
+          "type": "paragraph",
+          "text": "We presented a three dimensional convolutional detector for pulmonary nodules that improves sensitivity over established baselines while keeping the false positive rate low. The main limitation is that evaluation was confined to a single public dataset acquired in a narrow range of scanners. Future work will examine cross institution generalisation and the calibration of predicted confidence scores.",
+          "verified": true
+        }
+      ]
+    }
+  ],
+  "references": [
+    "Dou, Q., Chen, H., Jin, Y., Lin, H., Qin, J., & Heng, P. A. (2017). Automated pulmonary nodule detection via 3D ConvNets with online sample filtering. Medical Image Computing and Computer Assisted Intervention, 559-567.",
+    "Firmino, M., Angelo, G., Morais, H., Dantas, M. R., & Valentim, R. (2016). Computer aided detection and diagnosis of lung cancer: a review. BioMedical Engineering OnLine, 15(1), 2.",
+    "Setio, A. A. A., Ciompi, F., Litjens, G., Gerke, P., Jacobs, C., & van Riel, S. J. (2016). Pulmonary nodule detection in CT images using multi view convolutional networks. IEEE Transactions on Medical Imaging, 35(5), 1160-1169.",
+    "Sung, H., Ferlay, J., Siegel, R. L., Laversanne, M., Soerjomataram, I., & Jemal, A. (2021). Global cancer statistics 2020. CA: A Cancer Journal for Clinicians, 71(3), 209-249."
+  ],
+  "verification": {
+    "verified_by": "Member 2 - Ragas gatekeeper (example)",
+    "faithfulness": 0.94
+  }
+}

@@ -144,6 +144,7 @@ class Element:
     kind: str
     text: str
     page: int = 1
+    image: str = ""          # path to a figure image, when one is available
 
 
 @dataclass
@@ -197,6 +198,15 @@ class StructuredPaper:
 
     # Filled in by stage 3: IEEE sections this paper does not have.
     missing_sections: List[str] = field(default_factory=list)
+
+    # Filled in by stage 5:
+    # each reference split into parts (authors, title, venue...) plus its IEEE
+    # form as (text, italic) pieces, in IEEE order (order of first citation)
+    reference_records: List[dict] = field(default_factory=list)
+    # every change made by AI (or automatic extraction), for transparency
+    ai_log: List[str] = field(default_factory=list)
+    # what stage 5 did, line by line, for the terminal report
+    compose_report: List[str] = field(default_factory=list)
 
     # Things the classifier noticed but could not fix, e.g. "no abstract found".
     warnings: List[str] = field(default_factory=list)

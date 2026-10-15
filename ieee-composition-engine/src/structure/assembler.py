@@ -124,20 +124,36 @@ def _group_into_paragraphs(blocks: List[TextBlock], stats: _LayoutStats) -> List
 
 
 def _group_into_references(blocks: List[TextBlock], stats: _LayoutStats) -> List[str]:
-    """One string per reference. A new entry starts when the line looks like
-    the beginning of a reference, or after a visible gap."""
+    """One string per reference.
+
+    A new entry starts when:
+      * the line looks like the start of a reference ("[3]", "Smith, J."), or
+      * there is a bigger vertical gap than usual INSIDE the reference list
+        (lines within one entry sit ~11pt apart, entries ~20pt apart), or
+      * the list continues at the top of a new page or column and the
+        previous line finished with a full stop.
+    The gap is measured against the reference list's OWN line spacing, not
+    the body text's: references are usually set in smaller type.
+    """
+    pitches = [c.y0 - p.y0 for p, c in zip(blocks, blocks[1:])
+               if p.page == c.page and p.column == c.column and 0 < c.y0 - p.y0 < 40]
+    ref_pitch = statistics.median(pitches) if pitches else stats.line_pitch
+
     entries: List[List[TextBlock]] = []
     for b in blocks:
         new_entry = not entries
         if entries:
             prev = entries[-1][-1]
-            if REFERENCE_START.match(b.text):
+            same_column = prev.page == b.page and prev.column == b.column
+            jump = b.y0 - prev.y0
+            if prev.x1 == 0:                              # Word file: one paragraph per entry
                 new_entry = True
-            elif (prev.page == b.page and stats.line_pitch
-                  and b.y0 - prev.y0 > stats.line_pitch * 1.25 and prev.x1 != 0):
+            elif REFERENCE_START.match(b.text):
                 new_entry = True
-            elif prev.x1 == 0:                # Word file: one paragraph per entry
-                new_entry = True
+            elif same_column and ref_pitch and jump > ref_pitch * 1.4:
+                new_entry = True                          # a visible gap
+            elif (not same_column or jump < -ref_pitch * 2) and prev.text.rstrip().endswith("."):
+                new_entry = True                          # new page/column, previous entry ended
         if new_entry:
             entries.append([b])
         else:

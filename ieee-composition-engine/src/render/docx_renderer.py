@@ -23,6 +23,7 @@ WHAT goes on the page, never HOW BIG it is.
 
 from __future__ import annotations
 
+import os
 import re
 from typing import List
 
@@ -327,7 +328,14 @@ class IEEEDocxRenderer:
         rest = rest.rstrip(".")
 
         if kind.startswith("fig"):
-            _placeholder(self.doc, f"Figure {number} image - placed in Step 6")
+            if element.image and os.path.exists(element.image):
+                # A real image came with the content (e.g. from Member 1's figure
+                # repository): insert it at the full width of the column.
+                p = _paragraph(self.doc, align=WD_ALIGN_PARAGRAPH.CENTER,
+                               before=S.CAPTION_SPACE_BEFORE, keep_with_next=True)
+                p.add_run().add_picture(element.image, width=S.COLUMN_WIDTH)
+            else:
+                _placeholder(self.doc, f"Figure {number} image - placed in Step 6")
             p = _paragraph(self.doc, align=WD_ALIGN_PARAGRAPH.CENTER,
                            before=S.CAPTION_SPACE_BEFORE, after=S.CAPTION_SPACE_AFTER)
             _set_font(_add(p, f"{S.FIGURE_LABEL} {number}. "), S.CAPTION_SIZE)
@@ -355,8 +363,8 @@ class IEEEDocxRenderer:
             self.notes.append("No references found.")
             return
 
+        records = self.paper.reference_records
         for i, ref in enumerate(self.paper.references, start=1):
-            text = ALREADY_NUMBERED_REF.sub("", ref, count=1)
             # Hanging indent: "[1]" sits in the margin, the wrapped lines line up
             # with the start of the text - the IEEE reference-list look.
             p = _paragraph(self.doc, align=WD_ALIGN_PARAGRAPH.JUSTIFY)
@@ -364,12 +372,21 @@ class IEEEDocxRenderer:
             fmt.left_indent = S.REFERENCE_HANGING_INDENT
             fmt.first_line_indent = -S.REFERENCE_HANGING_INDENT
             fmt.tab_stops.add_tab_stop(S.REFERENCE_HANGING_INDENT)
-            _set_font(_add(p, f"[{i}]\t{text}"), S.REFERENCE_SIZE)
+            _set_font(_add(p, f"[{i}]\t"), S.REFERENCE_SIZE)
 
-        self.notes.append(
-            "References are numbered [1], [2]... but still in the author's original "
-            "style. Converting each one to IEEE style is part of Step 5."
-        )
+            if i <= len(records) and records[i - 1].get("segments"):
+                # Step 5 has split the reference into pieces; the journal or
+                # conference name is printed in italics, as IEEE requires.
+                for text, italic in records[i - 1]["segments"]:
+                    _set_font(_add(p, text), S.REFERENCE_SIZE, italic=italic)
+            else:
+                _set_font(_add(p, ALREADY_NUMBERED_REF.sub("", ref, count=1)), S.REFERENCE_SIZE)
+
+        if not records:
+            self.notes.append(
+                "References are numbered [1], [2]... but still in the author's original "
+                "style (Step 5 was skipped)."
+            )
 
 
 def render_docx(paper: StructuredPaper, output_path: str) -> List[str]:

@@ -13,9 +13,10 @@ import os
 
 from ..models import ParsedDocument
 from .docx_reader import read_docx
+from .package_reader import PackageError, read_package
 from .pdf_reader import read_pdf
 
-SUPPORTED_FORMATS = (".pdf", ".docx")
+SUPPORTED_FORMATS = (".pdf", ".docx", ".json")
 
 
 def load_document(path: str) -> ParsedDocument:
@@ -29,6 +30,9 @@ def load_document(path: str) -> ParsedDocument:
         return read_pdf(path)
     if extension == ".docx":
         return read_docx(path)
+    if extension == ".json":
+        raise ValueError("A .json file is a verified content package - "
+                         "load it with read_package(), not load_document().")
 
     raise ValueError(
         f"Unsupported file type '{extension}'. "
@@ -36,4 +40,5 @@ def load_document(path: str) -> ParsedDocument:
     )
 
 
-__all__ = ["load_document", "read_pdf", "read_docx", "SUPPORTED_FORMATS"]
+__all__ = ["load_document", "read_pdf", "read_docx", "read_package", "PackageError",
+           "SUPPORTED_FORMATS"]

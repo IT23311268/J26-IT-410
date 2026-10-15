@@ -39,19 +39,41 @@ python tools/make_sample_paper.py
 # run the engine - the IEEE Word file appears in data/output/
 python main.py data/input/sample_paper.pdf
 
-# the tests
+# without Gemini (rules only)
+python main.py data/input/sample_paper.pdf --offline
+
+# let Gemini polish the wording (every change is checked)
+python main.py data/input/sample_paper.pdf --polish
+
+# input from the other agents: a verified content package
+python main.py data/input/sample_verified_content.json
+
+# the tests (Gemini is never called - a fake stands in)
 pytest -q
 ```
+
+## Two ways in
+
+1. **A paper** (`.pdf` / `.docx`) - the engine reads it itself. This stands in
+   for Member 1's ingestion while the components are not integrated.
+2. **A verified content package** (`.json`) - TAF task 1, "receive verified
+   content from other AI agents". The format is documented at the top of
+   `src/ingest/package_reader.py`. Items marked `"verified": false` by the
+   grounding gatekeeper are left out.
 
 The IEEE manuscript is written to `data/output/<name>_IEEE.docx`.
 
 ## Gemini API key
 
-Create a file named `.env` in this folder:
+Copy `.env.example` to a new file named `.env` in this folder and put your key in it:
 
 ```
 GEMINI_API_KEY=your_key_here
+GEMINI_MODEL=gemini-3.5-flash-lite      # optional
 ```
+
+Without a key the engine still runs, using rules only. Gemini answers are
+cached in `data/cache/`, so re-running the same paper costs no extra requests.
 
 Get a free key at <https://aistudio.google.com>. The `.env` file is listed in
 `.gitignore` and must never be committed.
@@ -62,5 +84,5 @@ Get a free key at <https://aistudio.google.com>. The `.env` file is listed in
 - [x] Stage 2 - block classification and paper reconstruction
 - [x] Stage 3 - IEEE section mapping
 - [x] Stage 4 - two-column IEEE Word document (tested on a real ICLR-style arXiv paper)
-- [ ] Stage 5 - composition with Gemini
+- [x] Stage 5 - IEEE references and citations, wording rules, index terms, abstract, polish (Gemini, every output checked); verified content package input
 - [ ] Stage 6 - figure placement and compliance score

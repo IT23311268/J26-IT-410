@@ -5,10 +5,19 @@ Runs the stages built so far:
     stage 1  ingest    - read the file into lines with layout clues
     stage 2  structure - label every line, then rebuild the paper
     stage 3  map       - match the author's sections onto the IEEE skeleton
+    stage 5  compose   - IEEE references and citations, wording rules, index terms,
+                         abstract (Gemini, checked), optional polish
     stage 4  render    - write the two-column IEEE Word document
+(Stage 5 runs before stage 4: the text is finished first, then printed.)
+
+Input can be a paper (.pdf / .docx) OR a verified content package (.json) -
+the format the other agents in the group pipeline hand over.
 
 Usage:
     python main.py data/input/sample_paper.pdf
+    python main.py data/input/sample_paper.pdf --offline      (no Gemini, rules only)
+    python main.py data/input/sample_paper.pdf --polish       (Gemini rewording, checked)
+    python main.py data/input/sample_verified_content.json    (content from other agents)
     python main.py data/input/sample_paper.pdf --lines 30     (also show labelled lines)
 """
 
@@ -19,7 +28,8 @@ import os
 import sys
 import textwrap
 
-from src.ingest import load_document
+from src.compose import compose, make_llm
+from src.ingest import PackageError, load_document, read_package
 from src.render import render_docx
 from src.structure import map_to_ieee, structure_document
 
@@ -154,6 +164,36 @@ def print_stage3(paper) -> None:
 
 
 # ---------------------------------------------------------------------------
+# Printing stage 5
+# ---------------------------------------------------------------------------
+
+def print_stage5(paper, llm) -> None:
+    banner("STAGE 5 - IEEE COMPOSITION")
+    print(f"  AI model   : {llm.name}")
+    if not llm.available:
+        print(f"  Why        : {getattr(llm, 'reason', '')}")
+    print()
+    for line in paper.compose_report:
+        for i, part in enumerate(textwrap.wrap(line, WIDTH - 8)):
+            print(("    - " if i == 0 else "      ") + part)
+    if getattr(llm, "calls_made", 0) or getattr(llm, "cache_hits", 0):
+        print()
+        print(f"  Gemini requests: {llm.calls_made} new, {llm.cache_hits} reused from cache")
+    if paper.ai_log:
+        print()
+        print("  Written or changed by AI / automatic extraction (for transparency):")
+        for entry in paper.ai_log:
+            for i, part in enumerate(textwrap.wrap(entry, WIDTH - 8)):
+                print(("    * " if i == 0 else "      ") + part)
+    if paper.references:
+        print()
+        print("  First references in IEEE style:")
+        for i, ref in enumerate(paper.references[:3], start=1):
+            for j, part in enumerate(textwrap.wrap(ref, WIDTH - 10)):
+                print((f"    [{i}] " if j == 0 else "        ") + part)
+
+
+# ---------------------------------------------------------------------------
 
 def main() -> int:
     # Windows terminals default to an old text encoding that cannot print
@@ -163,34 +203,61 @@ def main() -> int:
         sys.stdout.reconfigure(encoding="utf-8", errors="replace")
 
     parser = argparse.ArgumentParser(description="IEEE Manuscript Composition Engine")
-    parser.add_argument("input_file", help="path to a .pdf or .docx file")
+    parser.add_argument("input_file", help="a .pdf / .docx paper, or a .json content package")
     parser.add_argument("--lines", type=int, default=0,
                         help="how many labelled lines from stage 2 to print (default: none)")
     parser.add_argument("--outdir", default="data/output",
-                        help="where to write the JSON results")
+                        help="where to write the results")
+    parser.add_argument("--offline", action="store_true",
+                        help="do not use Gemini; rules only")
+    parser.add_argument("--polish", action="store_true",
+                        help="let Gemini reword paragraphs (every change is checked)")
     args = parser.parse_args()
-
-    try:
-        doc = load_document(args.input_file)
-    except (FileNotFoundError, ValueError) as error:
-        print(f"\n  ERROR: {error}\n")
-        return 1
-
-    print_stage1(doc)
-
-    paper = structure_document(doc)          # stage 2: labels + rebuild
-    print_labelled_lines(doc, args.lines)
-    print_structure(paper)
-
-    paper = map_to_ieee(paper)               # stage 3: IEEE skeleton
-    print_stage3(paper)
 
     os.makedirs(args.outdir, exist_ok=True)
     stem = os.path.splitext(os.path.basename(args.input_file))[0]
     lines_path = os.path.join(args.outdir, f"{stem}_stage2_labelled_lines.json")
-    paper_path = os.path.join(args.outdir, f"{stem}_stage3_ieee_paper.json")
-    doc.to_json(lines_path)
+    paper_path = os.path.join(args.outdir, f"{stem}_ieee_paper.json")
+    saved = []
+
+    if args.input_file.lower().endswith(".json"):
+        # Route B: verified content handed over by the other agents (TAF task 1)
+        if not os.path.exists(args.input_file):
+            print(f"\n  ERROR: No such file: {args.input_file}\n")
+            return 1
+        try:
+            paper = read_package(args.input_file)
+        except PackageError as error:
+            print(f"\n  ERROR: {error}\n")
+            return 1
+        banner("STAGES 1-2 - VERIFIED CONTENT PACKAGE RECEIVED")
+        print(f"  File     : {args.input_file}")
+        print(f"  Title    : {short(paper.title, 60)}")
+        print(f"  Sections : {len(paper.sections)}   "
+              f"References: {len(paper.references)}")
+    else:
+        # Route A: read the paper itself (stand-in for Member 1's ingestion)
+        try:
+            doc = load_document(args.input_file)
+        except (FileNotFoundError, ValueError) as error:
+            print(f"\n  ERROR: {error}\n")
+            return 1
+        print_stage1(doc)
+        paper = structure_document(doc)          # stage 2: labels + rebuild
+        print_labelled_lines(doc, args.lines)
+        print_structure(paper)
+        doc.to_json(lines_path)
+        saved.append((lines_path, "every line with its label"))
+
+    paper = map_to_ieee(paper)                   # stage 3: IEEE skeleton
+    print_stage3(paper)
+
+    llm = make_llm(offline=args.offline)         # stage 5: composition
+    paper = compose(paper, llm, polish=args.polish)
+    print_stage5(paper, llm)
+
     paper.to_json(paper_path)
+    saved.append((paper_path, "the finished paper, as data"))
 
     # stage 4: the IEEE Word document
     docx_path = os.path.join(args.outdir, f"{stem}_IEEE.docx")
@@ -213,8 +280,8 @@ def main() -> int:
 
     print()
     print("  Saved:")
-    print(f"    {lines_path}   (every line with its label)")
-    print(f"    {paper_path}   (the paper, mapped to IEEE)")
+    for path, what in saved:
+        print(f"    {path}   ({what})")
     print(f"    {docx_path}   (OPEN THIS ONE IN WORD)")
     print()
     return 0
