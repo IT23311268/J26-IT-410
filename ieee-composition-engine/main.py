@@ -5,6 +5,7 @@ Runs the stages built so far:
     stage 1  ingest    - read the file into lines with layout clues
     stage 2  structure - label every line, then rebuild the paper
     stage 3  map       - match the author's sections onto the IEEE skeleton
+    stage 4  render    - write the two-column IEEE Word document
 
 Usage:
     python main.py data/input/sample_paper.pdf
@@ -19,6 +20,7 @@ import sys
 import textwrap
 
 from src.ingest import load_document
+from src.render import render_docx
 from src.structure import map_to_ieee, structure_document
 
 WIDTH = 78
@@ -190,10 +192,30 @@ def main() -> int:
     doc.to_json(lines_path)
     paper.to_json(paper_path)
 
+    # stage 4: the IEEE Word document
+    docx_path = os.path.join(args.outdir, f"{stem}_IEEE.docx")
+    try:
+        render_notes = render_docx(paper, docx_path)
+    except PermissionError:
+        print(f"\n  ERROR: cannot write {docx_path}")
+        print("  Is it open in Word? Close it and run the command again.\n")
+        return 1
+
+    banner("STAGE 4 - IEEE WORD DOCUMENT")
+    print(f"  Written to : {docx_path}")
+    print("  Layout     : US Letter, two columns, Times New Roman, IEEE margins")
+    if render_notes:
+        print()
+        print("  Notes:")
+        for note in render_notes:
+            for i, line in enumerate(textwrap.wrap(note, WIDTH - 8)):
+                print(("    - " if i == 0 else "      ") + line)
+
     print()
     print("  Saved:")
     print(f"    {lines_path}   (every line with its label)")
     print(f"    {paper_path}   (the paper, mapped to IEEE)")
+    print(f"    {docx_path}   (OPEN THIS ONE IN WORD)")
     print()
     return 0
 

@@ -77,3 +77,45 @@ def test_body_font_is_measured_by_characters():
                                 font_name="x", bold=False, italic=False,
                                 x0=0, y0=0, x1=0, y1=0))
     assert doc.measure_body_font() == 10.0
+
+
+# ---------------------------------------------------------------------------
+# Problems found on a real arXiv paper (2610.20597v1)
+# ---------------------------------------------------------------------------
+
+import pymupdf  # noqa: E402
+
+
+def _tight_pdf(path):
+    """A page with the three problems the real arXiv paper had."""
+    doc = pymupdf.open()
+    page = doc.new_page(width=612, height=792)
+    # 1. arXiv prints its identifier sideways down the left margin
+    page.insert_text((30, 600), "arXiv:2610.20597v1 [cs.AI] 14 Oct 2026",
+                     fontsize=20, fontname="tiro", rotate=90)
+    # 2. LaTeX-style tight justification: words 1pt apart, no space characters
+    x = 72
+    for word in ["Action", "forecasting", "fits", "the", "multi-step"]:
+        page.insert_text((x, 100), word, fontsize=10, fontname="tiro")
+        x += pymupdf.get_text_length(word, "tiro", 10) + 1.0
+    # 3. an invisible control character inside the text
+    page.insert_text((72, 130), "bad\x01char here", fontsize=10, fontname="tiro")
+    doc.save(path)
+
+
+def test_real_paper_problems_are_fixed(tmp_path):
+    path = str(tmp_path / "tight.pdf")
+    _tight_pdf(path)
+    texts = [b.text for b in load_document(path).blocks]
+
+    assert not any("arXiv:" in t for t in texts)                 # sideways text skipped
+    assert "Action forecasting fits the multi-step" in texts     # spaces restored
+    assert "badchar here" in texts                               # control char removed
+
+
+def test_letters_inside_a_word_are_not_split(tmp_path):
+    path = str(tmp_path / "normal.pdf")
+    doc = pymupdf.open()
+    doc.new_page().insert_text((72, 100), "Convolutional networks", fontsize=10, fontname="tiro")
+    doc.save(path)
+    assert load_document(path).blocks[0].text == "Convolutional networks"

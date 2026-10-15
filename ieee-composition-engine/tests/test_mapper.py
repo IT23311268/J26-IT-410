@@ -131,12 +131,12 @@ def test_missing_sections_are_reported():
 def test_unrecognised_heading_keeps_its_own_name():
     paper = map_to_ieee(_paper(
         ("Introduction", 1, ""),
-        ("Ethical Considerations Under Sri Lankan Law", 1, ""),
+        ("Deployment in Rural Clinics of Sri Lanka", 1, ""),
         ("Method", 1, ""), ("Results", 1, ""), ("Conclusion", 1, ""),
     ))
     odd = paper.sections[1]
     assert odd.ieee_slot == "other"
-    assert odd.ieee_heading == "Ethical Considerations Under Sri Lankan Law"
+    assert odd.ieee_heading == "Deployment in Rural Clinics of Sri Lanka"
     assert odd.ieee_number == "II"                    # still numbered
 
 

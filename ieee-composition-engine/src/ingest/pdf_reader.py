@@ -14,6 +14,8 @@ so that job belongs to stage 2.
 
 from __future__ import annotations
 
+import re
+
 import pymupdf
 
 from ..models import ParsedDocument, TextBlock
@@ -39,6 +41,49 @@ def _span_is_italic(span: dict) -> bool:
     return "italic" in name or "oblique" in name
 
 
+# Characters Word cannot store: invisible control codes some PDFs contain
+# (everything below the space character except tab and newline).
+CONTROL_CHARS = re.compile(r"[\x00-\x08\x0b\x0c\x0e-\x1f\x7f\ufffe\uffff]")
+
+# A gap wider than this fraction of the font size counts as a space.
+# Letters inside a word sit edge to edge (gap about 0); LaTeX squeezes the
+# gap between words down to roughly 0.1 of the font size, so 0.07 sits
+# safely between the two.
+SPACE_GAP_RATIO = 0.07
+
+
+def _is_horizontal(line: dict) -> bool:
+    """Normal text runs left to right: direction (1, 0). Sideways text - like
+    the arXiv identifier printed down the left margin - is skipped."""
+    dx, dy = line.get("dir", (1.0, 0.0))
+    return dx > 0.99 and abs(dy) < 0.01
+
+
+def _rebuild_text(spans: list) -> str:
+    """Rebuild a line's text letter by letter, adding the spaces the PDF left out.
+
+    Many PDFs made with LaTeX store no space characters at all - just a
+    small visual gap between words. PyMuPDF only notices gaps of about 1.5pt
+    or more, so tightly justified LaTeX lines come out as
+    "Actionforecastingfitsthe". Looking at each letter's position fixes that.
+    """
+    out = []
+    prev = None                                  # (right edge, font size, char)
+    for span in spans:
+        size = float(span.get("size", 10.0)) or 10.0
+        for ch in span.get("chars", []):
+            c = ch.get("c", "")
+            x0, _, x1, _ = ch["bbox"]
+            if prev is not None and c != " " and prev[2] != " ":
+                gap = x0 - prev[0]
+                if gap > SPACE_GAP_RATIO * max(size, prev[1]):
+                    out.append(" ")
+            out.append(c)
+            prev = (x1, size, c)
+    text = CONTROL_CHARS.sub("", "".join(out))
+    return " ".join(text.split())                 # squash runs of whitespace
+
+
 def _line_to_block(line: dict, page_number: int) -> TextBlock | None:
     """Collapse one line's spans into a single TextBlock.
 
@@ -48,16 +93,19 @@ def _line_to_block(line: dict, page_number: int) -> TextBlock | None:
     DOMINANT span - the one carrying the most characters - because that is
     what a human eye reads the line as.
     """
-    spans = [s for s in line.get("spans", []) if s.get("text", "").strip()]
+    if not _is_horizontal(line):
+        return None
+
+    spans = [s for s in line.get("spans", [])
+             if "".join(c.get("c", "") for c in s.get("chars", [])).strip()]
     if not spans:
         return None
 
-    text = "".join(s["text"] for s in spans)
-    text = " ".join(text.split())          # squash runs of whitespace
+    text = _rebuild_text(spans)
     if not text:
         return None
 
-    dominant = max(spans, key=lambda s: len(s.get("text", "")))
+    dominant = max(spans, key=lambda s: len(s.get("chars", [])))
     x0, y0, x1, y1 = line["bbox"]
 
     return TextBlock(
@@ -71,7 +119,39 @@ def _line_to_block(line: dict, page_number: int) -> TextBlock | None:
         y0=round(y0, 1),
         x1=round(x1, 1),
         y1=round(y1, 1),
+        max_font_size=round(max(float(sp.get("size", 0.0)) for sp in spans), 1),
     )
+
+
+# A line that is ONLY a section number: "1", "3.2", "A", "A.1"
+SECTION_NUMBER_ONLY = re.compile(r"^([0-9]{1,2}(\.[0-9]{1,2})*|[A-Z](\.[0-9]{1,2})*)\.?$")
+
+
+def _merge_split_section_numbers(lines: list) -> list:
+    """Re-attach section numbers that the PDF stored as separate lines.
+
+    LaTeX templates such as ICLR and NeurIPS typeset "1  INTRODUCTION" with a
+    wide gap, and PyMuPDF returns the "1" as a line of its own. On its own it
+    looks exactly like a page number and gets thrown away, and the heading
+    loses its number. Here we glue it back on: a number-only line, followed on
+    the SAME baseline (same height on the page) by text just to its right.
+    """
+    used = set()
+    for i, num in enumerate(lines):
+        if i in used or not SECTION_NUMBER_ONLY.match(num.text):
+            continue
+        for j, other in enumerate(lines):
+            if j == i or j in used or other.page != num.page:
+                continue
+            same_baseline = abs(other.y1 - num.y1) < 3.0
+            just_right = 0 <= other.x0 - num.x1 < 40
+            if same_baseline and just_right and not SECTION_NUMBER_ONLY.match(other.text):
+                other.text = f"{num.text.rstrip('.')} {other.text}"
+                other.x0 = num.x0
+                other.max_font_size = max(other.max_font_size, num.max_font_size)
+                used.add(i)
+                break
+    return [line for k, line in enumerate(lines) if k not in used]
 
 
 FULL_WIDTH, LEFT, RIGHT = "full", "left", "right"
@@ -142,18 +222,21 @@ def read_pdf(path: str) -> ParsedDocument:
     )
 
     for page_index, page in enumerate(doc, start=1):
-        page_dict = page.get_text("dict")
+        # "rawdict" gives every letter with its exact position (see _rebuild_text)
+        page_dict = page.get_text("rawdict")
 
         # block["type"] == 0 means text. Type 1 is an image, which we will
         # handle on day 5 when we place figures.
         text_blocks = [b for b in page_dict.get("blocks", []) if b.get("type") == 0]
 
+        page_lines = []
         for block in _reading_order(text_blocks, page.rect.width):
             for line in block.get("lines", []):
                 text_block = _line_to_block(line, page_index)
                 if text_block is not None:
                     text_block.column = block["_column"]
-                    parsed.blocks.append(text_block)
+                    page_lines.append(text_block)
+        parsed.blocks.extend(_merge_split_section_numbers(page_lines))
 
     doc.close()
     parsed.measure_body_font()

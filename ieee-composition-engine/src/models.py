@@ -36,6 +36,7 @@ class BlockType(str, Enum):
     CAPTION = "caption"
     REFERENCE = "reference"
     EQUATION = "equation"
+    CODE = "code"
     JUNK = "junk"
 
 
@@ -61,6 +62,8 @@ class TextBlock:
     block_type: BlockType = BlockType.UNKNOWN
     style_name: str = ""      # Word paragraph style, e.g. "Heading 1" (docx only)
     column: int = 0           # 0 = left column or full width, 1 = right column
+    max_font_size: float = 0.0  # largest letter on the line (small-caps headings
+                                # use a big first letter: "I" 12pt + "NTRODUCTION" 9.6pt)
 
     @property
     def word_count(self) -> int:
@@ -133,7 +136,7 @@ class ParsedDocument:
 class Element:
     """One piece of content inside a section, kept in its original order.
 
-    kind is "paragraph", "caption" or "equation". Order matters: on day 5 we
+    kind is "paragraph", "caption", "equation", "math_region" or "code". Order matters: in Step 6 we
     move figures and tables next to the paragraph that talks about them, and
     to do that we need to know where everything sat in the first place.
     """
@@ -157,6 +160,7 @@ class Section:
     number: str               # the author's original number, e.g. "3" or "3.1"
     level: int                # 1 = section, 2 = subsection, 3 = sub-subsection
     elements: List[Element] = field(default_factory=list)
+    in_appendix: bool = False     # True for sections that come after the references
 
     # --- filled in by stage 3 (the IEEE mapper) ---------------------------
     ieee_slot: str = ""           # which IEEE part this is, e.g. "methodology"

@@ -13,9 +13,9 @@ that says how closely the output matches the IEEE template.
 | 1. Ingest | `src/ingest/` | Reads the file into text lines **with their font and position clues** |
 | 2. Classify | `src/structure/` | Labels each line: title, heading, body, caption, reference |
 | 3. Map | `src/structure/` | Matches the author's sections onto the IEEE skeleton |
-| 4. Compose | `src/compose/` | Rewrites into IEEE register, generates abstract and index terms, places figures |
-| 5. Render | `src/render/` | Builds the two-column IEEE `.docx` |
-| 6. Score | `src/evaluate/` | Runs the IEEE format compliance checks |
+| 4. Render | `src/render/` | Builds the two-column IEEE `.docx` (all measurements in `ieee_style.py`) |
+| 5. Compose | `src/compose/` | Gemini: IEEE-style rewriting, abstract and index terms, IEEE references |
+| 6. Place and score | `src/evaluate/` | Figure/table placement and IEEE format compliance score |
 
 ## Setup (once)
 
@@ -36,14 +36,14 @@ pip install -r requirements.txt
 # build a messy test paper to experiment with
 python tools/make_sample_paper.py
 
-# stage 1: see what the reader pulls out
+# run the engine - the IEEE Word file appears in data/output/
 python main.py data/input/sample_paper.pdf
 
 # the tests
 pytest -q
 ```
 
-Stage 1 writes its full result to `data/output/<name>_stage1_blocks.json`.
+The IEEE manuscript is written to `data/output/<name>_IEEE.docx`.
 
 ## Gemini API key
 
@@ -61,6 +61,6 @@ Get a free key at <https://aistudio.google.com>. The `.env` file is listed in
 - [x] Stage 1 - ingest (PDF + Word, single and two-column)
 - [x] Stage 2 - block classification and paper reconstruction
 - [x] Stage 3 - IEEE section mapping
-- [ ] Stage 4 - composition
-- [ ] Stage 5 - rendering
-- [ ] Stage 6 - compliance score
+- [x] Stage 4 - two-column IEEE Word document (tested on a real ICLR-style arXiv paper)
+- [ ] Stage 5 - composition with Gemini
+- [ ] Stage 6 - figure placement and compliance score

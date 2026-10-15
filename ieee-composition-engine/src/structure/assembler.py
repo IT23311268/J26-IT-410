@@ -150,11 +150,24 @@ def _group_into_references(blocks: List[TextBlock], stats: _LayoutStats) -> List
 # ---------------------------------------------------------------------------
 
 def _split_authors(lines: List[str]) -> List[str]:
-    """'K. M. Perera, S. Fernando and A. Jayasuriya' -> three names."""
-    text = join_lines(lines)
-    text = re.sub(r"\s+and\s+|\s*&\s*", ", ", text)
-    parts = [re.sub(r"[\d*†‡§]+$", "", p).strip() for p in text.split(",")]
-    return [p for p in parts if p]
+    """Pull individual names out of the author lines.
+
+    'K. M. Perera, S. Fernando and A. Jayasuriya'  -> three names
+    'Haofei Yu1 ∗'  'Yixing Chen2 ∗'  (one per line) -> 'Haofei Yu', 'Yixing Chen'
+
+    Superscript affiliation numbers and footnote stars come out of the PDF as
+    ordinary characters glued to the name, so they are cut off here.
+    """
+    names: List[str] = []
+    for line in lines:
+        line = re.sub(r"\s+and\s+|\s*&\s*", ", ", line)
+        # a name followed by markers such as "1 ∗," also separates two names
+        line = re.sub(r"(?<=[a-z])[\d]+[\s∗*†‡§,]*", ", ", line)
+        for part in line.split(","):
+            part = re.sub(r"[\s\d∗*†‡§]+$", "", part).strip()
+            if part:
+                names.append(part)
+    return names
 
 
 def _split_keywords(text: str) -> List[str]:
@@ -192,6 +205,7 @@ def assemble(doc: ParsedDocument, label_counts: dict, notes: List[str]) -> Struc
     # --- body: walk the lines in order, filing content under headings --
     current: Section | None = None
     pending_body: List[TextBlock] = []
+    after_references = False        # sections after the reference list are appendices
 
     def flush_body() -> None:
         """Turn the body lines collected so far into paragraphs."""
@@ -217,21 +231,42 @@ def assemble(doc: ParsedDocument, label_counts: dict, notes: List[str]) -> Struc
             if heading.lower().strip() in ("references", "bibliography", "works cited",
                                            "literature cited"):
                 current = None          # the reference list is stored separately
+                after_references = True
                 continue
             level = (numbered_level or word_style_level(b)
                      or (2 if kind is BlockType.SUBHEADING else 1))
-            current = Section(heading=heading, number=number, level=level)
+            current = Section(heading=heading, number=number, level=level,
+                              in_appendix=after_references
+                              or heading.lower().startswith("appendi"))
             paper.sections.append(current)
         elif kind is BlockType.BODY:
             pending_body.append(b)
+        elif kind is BlockType.CODE:
+            flush_body()
+            if current is None:
+                current = Section(heading="", number="", level=1)
+                paper.sections.append(current)
+            last = current.elements[-1] if current.elements else None
+            if last is not None and last.kind == "code":
+                last.text = f"{last.text}\n{b.text}"       # one listing, line by line
+            else:
+                current.elements.append(Element(kind="code", text=b.text, page=b.page))
         elif kind in (BlockType.CAPTION, BlockType.EQUATION):
             flush_body()
             if current is None:
                 current = Section(heading="", number="", level=1)
                 paper.sections.append(current)
-            current.elements.append(
-                Element(kind=kind.value, text=b.text.strip(), page=b.page)
-            )
+            last = current.elements[-1] if current.elements else None
+            if kind is BlockType.EQUATION and last is not None \
+                    and last.kind in ("equation", "math_region"):
+                # Several equation lines in a row are scraps of ONE display
+                # equation that the PDF stored in pieces. Keep them together.
+                last.kind = "math_region"
+                last.text = f"{last.text} {b.text.strip()}"
+            else:
+                current.elements.append(
+                    Element(kind=kind.value, text=b.text.strip(), page=b.page)
+                )
     flush_body()
 
     # --- sanity checks -------------------------------------------------
@@ -240,7 +275,7 @@ def assemble(doc: ParsedDocument, label_counts: dict, notes: List[str]) -> Struc
     if not paper.authors:
         paper.warnings.append("No authors found.")
     if not paper.keywords:
-        paper.warnings.append("No keywords found - index terms will be generated on day 4.")
+        paper.warnings.append("No keywords found - index terms will be generated in Step 5.")
     if not [s for s in paper.sections if s.heading]:
         paper.warnings.append("No section headings found - the paper may be one block of text.")
 

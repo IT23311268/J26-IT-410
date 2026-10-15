@@ -19,7 +19,7 @@ Why rules and not an AI model?
   * they are fast, free and work offline
   * every decision can be explained - you can point at the exact rule
   * they give the same answer every time, which makes testing possible
-The LLM arrives on day 4, where it is actually needed: rewriting text.
+The LLM arrives in Step 5, where it is actually needed: rewriting text.
 """
 
 from __future__ import annotations
@@ -57,6 +57,10 @@ REFERENCES_HEADING = re.compile(
 EQUATION_NUMBER = re.compile(r"\(\s*\d+\s*\)\s*$")
 MATH_SIGNS = re.compile(r"[=<>≤≥∑∫√±×÷∝≈]")
 
+# Signs that a line is mathematics rather than prose
+MATH_SIGNAL = re.compile(r"[=≜∈∉≤≥≈∑∏∫∇∂πθλμσαβγδεφψω|^]|\blog\b|\bexp\b|\bmin\b|\bmax\b")
+PROSE_WORD = re.compile(r"^[A-Za-z]{4,}[.,;:]?$")
+
 # Page numbers: "3", "- 3 -", "Page 3", "3 of 12"
 PAGE_NUMBER = re.compile(r"^(page\s*)?[-–]?\s*\d{1,4}\s*[-–]?(\s*of\s*\d+)?$", re.I)
 
@@ -64,6 +68,20 @@ PAGE_NUMBER = re.compile(r"^(page\s*)?[-–]?\s*\d{1,4}\s*[-–]?(\s*of\s*\d+)?$
 NUMBERED = re.compile(r"^(\d+(?:\.\d+)*)\.?\s+(\S.*)$")     # "3", "3.1", "3.1.2"
 ROMAN = re.compile(r"^([IVXL]+)\.\s+(\S.*)$")                # "IV. RESULTS"
 LETTERED = re.compile(r"^([A-H])\.\s+(\S.*)$")               # "B. Dataset"
+APPENDIX_SUB = re.compile(r"^([A-Z]\.\d+(?:\.\d+)*)\.?\s+(\S.*)$")  # "A.1 MODEL LICENSE"
+APPENDIX_TOP = re.compile(r"^([A-Z])\s+([A-Z][A-Z0-9 :,&\-–]{2,})$")  # "B EXPERIMENTAL DETAILS"
+
+# A bold label that starts an ordinary paragraph, e.g.
+#   "Success-conditioned action chunk. Fix a successful trajectory..."
+#   "Q1: What is the empirical evidence for ...?"
+# It is short, but it is NOT a heading: more text follows the label.
+RUN_IN = re.compile(r"[.?!:]\s+\S")
+
+# Footnote lines: "*Equal contribution."  "1https://github.com/..."
+FOOTNOTE = re.compile(r"^([*∗†‡§]|\d+[A-Za-z])")
+
+# Affiliation lines that start with a superscript number: "1University of ..."
+NUMBERED_AFFILIATION = re.compile(r"^\d+\s?[A-Z]")
 
 AFFILIATION_WORDS = re.compile(
     r"(universit|department|dept\.|institute|college|faculty|school of|laborator|"
@@ -94,10 +112,56 @@ def split_heading_number(text: str) -> tuple:
     match = ROMAN.match(text)
     if match:
         return match.group(1), match.group(2).strip(), 1
+    match = APPENDIX_SUB.match(text)
+    if match:
+        number = match.group(1)
+        return number, match.group(2).strip(), number.count(".") + 1
     match = LETTERED.match(text)
     if match:
         return match.group(1), match.group(2).strip(), 2
+    match = APPENDIX_TOP.match(text)
+    if match:
+        return match.group(1), match.group(2).strip(), 1
     return "", text.strip(), 0
+
+
+def is_math_fragment(block: TextBlock) -> bool:
+    """A piece of a LaTeX display equation.
+
+    A PDF stores a formula as dozens of separately placed symbols, so it comes
+    out as short scraps such as "h P", "i", "t log pθ (at|ht)" or "= EPr+".
+    A scrap is short, contains no ordinary words of four or more letters, and
+    has at least one mathematical sign. (Table cells like "GRPO" or "50.3"
+    have no mathematical sign, so they are not caught here.)
+    """
+    text = block.text
+    if len(text) > 70:
+        return False
+    if any(PROSE_WORD.match(tok) and tok.lower() not in ("log", "exp", "min", "max")
+           for tok in text.split()):
+        return False
+    tokens = text.split()
+    single_letters = sum(1 for t in tokens if len(t) == 1 and t.isalpha())
+    # Very short scraps made of 1-3 character pieces ("t CE", ",", "i") are
+    # leftovers of a formula too: real sentences are never this short.
+    tiny_scrap = len(text) <= 8 and all(len(t) <= 3 for t in tokens)
+    return bool(MATH_SIGNAL.search(text)) or (tokens and single_letters == len(tokens)) \
+        or tiny_scrap
+
+
+MONOSPACE_FONT = re.compile(r"mon|courier|mono|consol|code|typewriter|cmtt|inconsolata", re.I)
+
+
+def is_monospace(block: TextBlock) -> bool:
+    """Typewriter-style fonts are used for code, prompts and program output."""
+    return bool(MONOSPACE_FONT.search(block.font_name or ""))
+
+
+def is_small_caps(block: TextBlock) -> bool:
+    """LaTeX 'fake small caps': ALL CAPITALS with a bigger first letter,
+    e.g. "I" at 12pt followed by "NTRODUCTION" at 9.6pt. Used for headings by
+    the ICLR and NeurIPS templates - and never bold, so the bold rule misses it."""
+    return block.is_upper and block.max_font_size >= block.font_size + 1.5
 
 
 WORD_HEADING_STYLE = re.compile(r"^heading\s*(\d)", re.I)
@@ -126,18 +190,24 @@ def _looks_like_heading(block: TextBlock, body_size: float) -> bool:
     if text.endswith((",", ";")):
         return False
 
-    has_number = bool(NUMBERED.match(text) or ROMAN.match(text))
+    number, rest, _ = split_heading_number(text)
+    has_number = bool(NUMBERED.match(text) or ROMAN.match(text) or APPENDIX_SUB.match(text))
     # A plain sentence that happens to be short and ends with a full stop is
     # NOT a heading - unless it is numbered, like "1. Background".
     if text.endswith(".") and not has_number:
+        return False
+    # A bold label followed by more text is the start of a paragraph.
+    # (All-capital headings like "5 COPE: CO-EVOLVING ACTING" are allowed a colon.)
+    if RUN_IN.search(rest) and not block.is_upper:
         return False
 
     bigger = block.font_size >= body_size + 0.5
     bold_normal_size = block.bold and block.font_size >= body_size - 0.2
     word_heading_style = block.style_name.lower().startswith("heading")
-    shouting = block.is_upper and block.word_count <= 6 and has_number
+    shouting = block.is_upper and block.word_count <= 8 and (has_number or bool(number))
+    small_caps = is_small_caps(block) and block.word_count <= 10
 
-    return bigger or bold_normal_size or word_heading_style or shouting
+    return bigger or bold_normal_size or word_heading_style or shouting or small_caps
 
 
 # ---------------------------------------------------------------------------
@@ -197,15 +267,33 @@ class BlockClassifier:
             if PAGE_NUMBER.match(b.text):
                 self._set(b, BlockType.JUNK)
 
+        # Text much smaller than the body text is the lettering INSIDE a figure
+        # (axis labels, legends, plotted code). It is part of the picture,
+        # not part of the paper's text.
+        # Typewriter-font text is code or a prompt listing - real content even
+        # when it is printed small - so it is never thrown away here.
+        for b in self.blocks:
+            if b.font_size < self.body_size * 0.75 and not CAPTION.match(b.text) \
+                    and not is_monospace(b):
+                self._set(b, BlockType.JUNK)
+
+        # Footnotes: small text starting with a marker, e.g. "*Equal contribution."
+        for b in self.blocks:
+            if b.font_size <= self.body_size - 0.8 and FOOTNOTE.match(b.text) \
+                    and not CAPTION.match(b.text):
+                self._set(b, BlockType.JUNK)
+
     def _pass_title(self) -> None:
         """The title is the largest text near the top of page 1.
 
         A long title wraps onto two or three lines, so we take every
         consecutive line at that same size, not just the first one.
         """
+        # A Word paragraph styled "Heading 1" is a section heading, never the
+        # title - even when it is the biggest text in a draft with no title.
         candidates = [
             (i, b) for i, b in enumerate(self.blocks)
-            if b.page == 1 and b.block_type is BlockType.UNKNOWN
+            if b.page == 1 and b.block_type is BlockType.UNKNOWN and not word_style_level(b)
         ][:25]                                        # only look near the top
         if not candidates:
             return
@@ -249,7 +337,7 @@ class BlockClassifier:
             break
 
         if abstract_index is None:
-            self.notes.append("No abstract found - one will be generated on day 4.")
+            self.notes.append("No abstract found - one will be generated in Step 5.")
         else:
             # Everything after the abstract heading is abstract text, until we
             # hit the keywords line or something that looks like a heading.
@@ -297,7 +385,7 @@ class BlockClassifier:
         for b in self.blocks[start:end]:
             if b.block_type is not BlockType.UNKNOWN:
                 continue
-            if b.italic or AFFILIATION_WORDS.search(b.text):
+            if b.italic or AFFILIATION_WORDS.search(b.text) or NUMBERED_AFFILIATION.match(b.text):
                 self._set(b, BlockType.AFFILIATION)
             else:
                 self._set(b, BlockType.AUTHOR)
@@ -312,8 +400,10 @@ class BlockClassifier:
                 for nxt in self.blocks[i + 1:]:
                     if nxt.block_type is not BlockType.UNKNOWN:
                         continue
-                    if (_looks_like_heading(nxt, self.body_size)
-                            and nxt.font_size >= heading_size - 0.2 and nxt.bold):
+                    strong = (nxt.bold and nxt.font_size >= heading_size - 0.2) \
+                        or is_small_caps(nxt) or bool(split_heading_number(nxt.text)[0])
+                    if _looks_like_heading(nxt, self.body_size) and strong \
+                            and nxt.is_upper == b.is_upper:
                         break
                     self._set(nxt, BlockType.REFERENCE)
                 return
@@ -328,6 +418,10 @@ class BlockClassifier:
             elif (EQUATION_NUMBER.search(b.text) and MATH_SIGNS.search(b.text)
                   and b.word_count <= 25):
                 self._set(b, BlockType.EQUATION)
+            elif is_monospace(b):
+                self._set(b, BlockType.CODE)
+            elif is_math_fragment(b):
+                self._set(b, BlockType.EQUATION)
 
     def _pass_headings(self) -> None:
         """Find headings, then decide which are sections and which are subsections.
@@ -337,14 +431,26 @@ class BlockClassifier:
         the biggest heading size in the paper is level 1, the next one down is
         level 2, and so on.
         """
-        found = [b for b in self.blocks
-                 if b.block_type is BlockType.UNKNOWN and _looks_like_heading(b, self.body_size)]
-
-        for b in found:
+        content = [b for b in self.blocks if b.block_type is not BlockType.JUNK]
+        for i, b in enumerate(content):
+            if b.block_type is not BlockType.UNKNOWN or not _looks_like_heading(b, self.body_size):
+                continue
+            # A heading is followed by a NEW sentence. If the next line carries
+            # on in lower case ("losses on aggregate..."), this line was really
+            # the first line of a bold label inside a paragraph.
+            nxt = content[i + 1] if i + 1 < len(content) else None
+            if nxt is not None and nxt.text[:1].islower() and not b.is_upper:
+                continue
             self._set(b, BlockType.HEADING)
 
+        # Rank heading sizes by the BIGGEST letter on each line: small-caps
+        # headings are mostly small letters, but their first letter shows
+        # their true size (12pt for sections, 10pt for subsections).
+        def size_of(block: TextBlock) -> float:
+            return round(max(block.font_size, block.max_font_size), 1)
+
         all_headings = [b for b in self.blocks if b.block_type is BlockType.HEADING]
-        sizes = sorted({round(b.font_size, 1) for b in all_headings}, reverse=True)
+        sizes = sorted({size_of(b) for b in all_headings}, reverse=True)
 
         for b in all_headings:
             _, _, numbered_level = split_heading_number(b.text)
@@ -355,7 +461,7 @@ class BlockClassifier:
                     b.block_type = BlockType.SUBHEADING
             elif numbered_level >= 2:
                 b.block_type = BlockType.SUBHEADING
-            elif numbered_level == 0 and len(sizes) > 1 and round(b.font_size, 1) != sizes[0]:
+            elif numbered_level == 0 and len(sizes) > 1 and size_of(b) != sizes[0]:
                 if not REFERENCES_HEADING.match(b.text):
                     b.block_type = BlockType.SUBHEADING
 

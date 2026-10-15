@@ -64,6 +64,9 @@ SLOTS: Dict[str, Slot] = {s.key: s for s in [
     Slot("discussion",     "Discussion",     6, True),
     Slot("conclusion",     "Conclusion",     7, True),
     Slot("acknowledgment", "Acknowledgment", 8, False),   # IEEE spells it without the "e"
+    # Statements many venues now require (ethics, reproducibility, AI use...).
+    # IEEE has no fixed name for them, so they keep their own, unnumbered.
+    Slot("statement",      "",               8, False),
     Slot("appendix",       "Appendix",       9, False),
 ]}
 
@@ -101,16 +104,17 @@ HEADING_CUES: Dict[str, List[Tuple[str, float]]] = {
     "experiments": [
         ("experimental setup", 1.0), ("experiment setup", 1.0),
         ("evaluation setup", 1.0), ("setup", 0.7), ("implementation details", 0.8),
-        ("experimental design", 0.9),
+        ("experimental design", 0.9), ("experimental settings", 1.0),
+        ("experimental setting", 1.0), ("settings", 0.6),
     ],
     "results": [
         ("results", 1.0), ("result", 0.9), ("findings", 0.9), ("experiments", 0.8),
         ("experiment", 0.7), ("evaluation", 0.8), ("performance", 0.7),
-        ("analysis", 0.5), ("outcomes", 0.8),
+        ("analysis", 0.5), ("outcomes", 0.8), ("ablation", 0.8), ("ablations", 0.8),
     ],
     "discussion": [
         ("discussion", 1.0), ("limitations", 0.8), ("threats to validity", 0.9),
-        ("implications", 0.7),
+        ("implications", 0.7), ("discussions", 1.0),
     ],
     "conclusion": [
         ("conclusion", 1.0), ("conclusions", 1.0), ("concluding", 1.0),
@@ -120,6 +124,11 @@ HEADING_CUES: Dict[str, List[Tuple[str, float]]] = {
     "acknowledgment": [
         ("acknowledgment", 1.0), ("acknowledgement", 1.0),
         ("acknowledgments", 1.0), ("acknowledgements", 1.0),
+    ],
+    "statement": [
+        ("statement", 1.0), ("ethics", 0.9), ("ethical", 0.8), ("broader impact", 1.0),
+        ("reproducibility", 0.9), ("ai use", 0.9), ("data availability", 1.0),
+        ("conflict of interest", 1.0), ("author contributions", 1.0), ("funding", 0.8),
     ],
     "appendix": [("appendix", 1.0), ("appendices", 1.0), ("supplementary", 0.8)],
 }
@@ -149,9 +158,13 @@ CONTENT_CUES: Dict[str, List[str]] = {
     "conclusion": [r"\bin conclusion\b", r"\bwe (have )?presented\b", r"\bfuture work\b",
                    r"\blimitation", r"\bin summary\b", r"\bwill (examine|explore|investigate)\b"],
     "acknowledgment": [r"\bthank", r"\bfund(ed|ing)\b", r"\bgrant\b"],
+    "statement": [],
     "appendix": [],
 }
 
+TITLE_WORDS_BONUS = 0.6     # heading repeats the paper's own title -> proposed method
+STOPWORDS = {"a", "an", "and", "as", "at", "by", "for", "from", "in", "into", "of", "on",
+             "or", "the", "to", "via", "with", "using", "towards", "toward"}
 CONTENT_HIT = 0.12          # score added per distinct cue found
 CONTENT_CAP = 0.5           # most that content alone can add
 POSITION_BONUS = 0.4        # first -> introduction, last -> conclusion
@@ -179,8 +192,12 @@ def _section_text(sections: List[Section], index: int) -> str:
     return " ".join(parts)
 
 
-def score_section(heading: str, text: str, is_first: bool, is_last: bool
-                  ) -> Dict[str, Tuple[float, List[str]]]:
+def _content_words(text: str) -> set:
+    return {w for w in _normalise_heading(text).split() if w not in STOPWORDS and len(w) > 2}
+
+
+def score_section(heading: str, text: str, is_first: bool, is_last: bool,
+                  title: str = "") -> Dict[str, Tuple[float, List[str]]]:
     """Score one section against every IEEE slot.
 
     Returns {slot: (score, [reasons])}. Kept as a separate function so the
@@ -209,6 +226,15 @@ def score_section(heading: str, text: str, is_first: bool, is_last: bool
             content_score = min(CONTENT_CAP, CONTENT_HIT * len(hits))
             score += content_score
             reasons.append(f"{len(hits)} content clue(s)")
+
+        # 4. the paper's own title: a section named after the method the paper
+        #    proposes ("COPE: Co-Evolving Acting and Forecasting" in a paper
+        #    titled "Co-Evolving Acting and Forecasting ...") is the methodology.
+        if slot == "methodology" and title:
+            shared = _content_words(heading) & _content_words(title)
+            if len(shared) >= 2:
+                score += TITLE_WORDS_BONUS
+                reasons.append("heading repeats the paper's title (the proposed method)")
 
         # 3. position
         if is_first and slot == "introduction":
@@ -240,13 +266,25 @@ def to_letter(n: int) -> str:
     return chr(ord("A") + n - 1) if 1 <= n <= 26 else str(n)
 
 
+# Acronyms that must stay in capitals when an ALL-CAPS heading is re-cased.
+ACRONYMS = {"ai", "ml", "llm", "llms", "rl", "nlp", "cnn", "rnn", "gpu", "cpu", "api", "iot",
+            "ieee", "ct", "mri", "rag", "ui", "ux", "sql", "url", "gpt", "bert", "svm", "knn"}
+
+
 def _smart_title(text: str) -> str:
-    """'OUR APPROACH' or 'our approach' -> 'Our Approach', keeping short words small."""
+    """'OUR APPROACH' or 'our approach' -> 'Our Approach', keeping short words
+    small and known acronyms in capitals ('AI USE STATEMENT' -> 'AI Use Statement')."""
     small = {"a", "an", "and", "as", "at", "by", "for", "in", "of", "on", "or", "the", "to", "with"}
     words = text.lower().split()
     out = []
     for i, w in enumerate(words):
-        out.append(w if (i > 0 and w in small) else w[:1].upper() + w[1:])
+        core = w.strip("():,;")
+        if core in ACRONYMS:
+            out.append(w.replace(core, core.upper()))
+        elif i > 0 and w in small:
+            out.append(w)
+        else:
+            out.append(w[:1].upper() + w[1:])
     return " ".join(out)
 
 
@@ -261,13 +299,21 @@ def map_to_ieee(paper: StructuredPaper) -> StructuredPaper:
     top_level = [i for i, s in enumerate(sections) if s.level == 1]
     # Only real headings compete for "last section"; an acknowledgment or
     # appendix at the end shouldn't steal the conclusion bonus.
+    back_matter = re.compile(r"acknowledg|appendi|statement|ethic|reproducib|broader impact", re.I)
     content_top = [i for i in top_level
-                   if not re.search(r"acknowledg|appendi", sections[i].heading, re.I)]
+                   if not sections[i].in_appendix and not back_matter.search(sections[i].heading)]
 
     used_slots: set = set()
 
     for position, i in enumerate(top_level):
         section = sections[i]
+
+        # Everything after the reference list is an appendix.
+        if section.in_appendix:
+            section.ieee_slot = "appendix"
+            section.mapping_confidence = 0.95
+            section.mapping_reason = "it comes after the reference list"
+            continue
 
         # Text that came before the first heading has no heading to judge by.
         if not section.heading:
@@ -278,7 +324,8 @@ def map_to_ieee(paper: StructuredPaper) -> StructuredPaper:
 
         is_first = position == 0
         is_last = bool(content_top) and i == content_top[-1] and len(content_top) > 1
-        scores = score_section(section.heading, _section_text(sections, i), is_first, is_last)
+        scores = score_section(section.heading, _section_text(sections, i), is_first, is_last,
+                               title=paper.title)
 
         best_slot, (best_score, reasons) = max(scores.items(), key=lambda kv: kv[1][0])
         runner_up = sorted((v[0] for v in scores.values()), reverse=True)[1]
@@ -307,7 +354,15 @@ def map_to_ieee(paper: StructuredPaper) -> StructuredPaper:
         if section.level == 1:
             letter = 0
             slot = SLOTS.get(section.ieee_slot)
-            if slot and slot.key not in used_slots:
+            if slot and slot.key == "appendix":
+                # IEEE: "Appendix A" + its title, not numbered with the sections
+                name = _smart_title(section.heading) if section.heading else ""
+                label = f"Appendix {section.number}" if section.number else "Appendix"
+                section.ieee_heading = f"{label}: {name}" if name and name.lower() != "appendix" \
+                    else label
+            elif slot and slot.key == "statement":
+                section.ieee_heading = _smart_title(section.heading)
+            elif slot and slot.key not in used_slots:
                 section.ieee_heading = slot.heading
                 used_slots.add(slot.key)
             elif section.heading:
@@ -342,8 +397,15 @@ def map_to_ieee(paper: StructuredPaper) -> StructuredPaper:
     for name in paper.missing_sections:
         paper.warnings.append(f'IEEE section "{name}" is missing from this paper.')
 
-    orders = [SLOTS[s.ieee_slot].order for s in sections
-              if s.level == 1 and s.ieee_slot in SLOTS]
+    # Only the FIRST section in each slot counts for ordering: a second results
+    # section (e.g. "Ablation Studies" after the discussion) is not a mistake.
+    seen_for_order: set = set()
+    orders = []
+    for s in sections:
+        if s.level == 1 and s.ieee_slot in SLOTS and s.ieee_slot != "statement" \
+                and s.ieee_slot not in seen_for_order:
+            seen_for_order.add(s.ieee_slot)
+            orders.append(SLOTS[s.ieee_slot].order)
     if orders != sorted(orders):
         paper.warnings.append(
             "Sections are not in the usual IEEE order. The author's order has been kept; "

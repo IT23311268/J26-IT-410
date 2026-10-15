@@ -229,3 +229,17 @@ def test_word_draft(tmp_path):
     ]
     assert len(paper.sections[0].paragraphs) == 2      # Word paragraphs kept apart
     assert len(paper.references) == 2
+
+
+def test_word_heading_is_never_taken_as_the_title(tmp_path):
+    """A draft with no title: its biggest text is a 'Heading 1', which must
+    stay a section heading instead of being promoted to the title."""
+    path = tmp_path / "untitled.docx"
+    d = docx.Document()
+    d.add_heading("Our Approach", level=1)
+    d.add_paragraph("We used the LUNA16 collection of 888 thoracic CT scans.")
+    d.save(path)
+
+    paper = structure_document(load_document(str(path)))
+    assert paper.title == ""
+    assert [s.heading for s in paper.sections] == ["Our Approach"]
