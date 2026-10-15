@@ -26,6 +26,8 @@ class BlockType(str, Enum):
     UNKNOWN = "unknown"
     TITLE = "title"
     AUTHOR = "author"
+    AFFILIATION = "affiliation"
+    ABSTRACT_HEADING = "abstract_heading"
     ABSTRACT = "abstract"
     KEYWORDS = "keywords"
     HEADING = "heading"
@@ -58,6 +60,7 @@ class TextBlock:
     y1: float                 # bottom edge
     block_type: BlockType = BlockType.UNKNOWN
     style_name: str = ""      # Word paragraph style, e.g. "Heading 1" (docx only)
+    column: int = 0           # 0 = left column or full width, 1 = right column
 
     @property
     def word_count(self) -> int:
@@ -120,3 +123,86 @@ class ParsedDocument:
         }
         with open(path, "w", encoding="utf-8") as f:
             json.dump(payload, f, indent=2, ensure_ascii=False)
+
+
+# ---------------------------------------------------------------------------
+# Stage 2 output: the paper rebuilt as a real document structure.
+# ---------------------------------------------------------------------------
+
+@dataclass
+class Element:
+    """One piece of content inside a section, kept in its original order.
+
+    kind is "paragraph", "caption" or "equation". Order matters: on day 5 we
+    move figures and tables next to the paragraph that talks about them, and
+    to do that we need to know where everything sat in the first place.
+    """
+
+    kind: str
+    text: str
+    page: int = 1
+
+
+@dataclass
+class Section:
+    """One heading and everything underneath it, up to the next heading.
+
+    Sections are stored flat, one after another, with a level number:
+    level 1 = "3. Our Approach", level 2 = "3.1 Dataset". A flat list is much
+    easier to work with than a tree, and the renderer only needs the level to
+    decide how to print the heading.
+    """
+
+    heading: str              # heading text WITHOUT its number, e.g. "Our Approach"
+    number: str               # the author's original number, e.g. "3" or "3.1"
+    level: int                # 1 = section, 2 = subsection, 3 = sub-subsection
+    elements: List[Element] = field(default_factory=list)
+
+    @property
+    def paragraphs(self) -> List[str]:
+        return [e.text for e in self.elements if e.kind == "paragraph"]
+
+    @property
+    def word_count(self) -> int:
+        return sum(len(e.text.split()) for e in self.elements if e.kind == "paragraph")
+
+
+@dataclass
+class StructuredPaper:
+    """The whole paper after stage 2: every part in its own labelled slot."""
+
+    source_path: str
+    title: str = ""
+    authors: List[str] = field(default_factory=list)
+    affiliations: List[str] = field(default_factory=list)
+    abstract: str = ""
+    keywords: List[str] = field(default_factory=list)
+    sections: List[Section] = field(default_factory=list)
+    references: List[str] = field(default_factory=list)
+
+    # How many lines got each label - useful for checking the classifier
+    # and for the "before" half of your evaluation.
+    label_counts: dict = field(default_factory=dict)
+
+    # Things the classifier noticed but could not fix, e.g. "no abstract found".
+    warnings: List[str] = field(default_factory=list)
+
+    def to_dict(self) -> dict:
+        return asdict(self)
+
+    def to_json(self, path: str) -> None:
+        with open(path, "w", encoding="utf-8") as f:
+            json.dump(self.to_dict(), f, indent=2, ensure_ascii=False)
+
+    @classmethod
+    def from_json(cls, path: str) -> "StructuredPaper":
+        with open(path, encoding="utf-8") as f:
+            data = json.load(f)
+        sections = [
+            Section(
+                heading=s["heading"], number=s["number"], level=s["level"],
+                elements=[Element(**e) for e in s["elements"]],
+            )
+            for s in data.pop("sections", [])
+        ]
+        return cls(sections=sections, **data)
