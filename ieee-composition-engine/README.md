@@ -60,7 +60,7 @@ Get a free key at <https://aistudio.google.com>. The `.env` file is listed in
 
 - [x] Stage 1 - ingest (PDF + Word, single and two-column)
 - [x] Stage 2 - block classification and paper reconstruction
-- [ ] Stage 3 - IEEE section mapping
+- [x] Stage 3 - IEEE section mapping
 - [ ] Stage 4 - composition
 - [ ] Stage 5 - rendering
 - [ ] Stage 6 - compliance score

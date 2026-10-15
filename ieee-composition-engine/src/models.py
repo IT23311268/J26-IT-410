@@ -158,6 +158,13 @@ class Section:
     level: int                # 1 = section, 2 = subsection, 3 = sub-subsection
     elements: List[Element] = field(default_factory=list)
 
+    # --- filled in by stage 3 (the IEEE mapper) ---------------------------
+    ieee_slot: str = ""           # which IEEE part this is, e.g. "methodology"
+    ieee_heading: str = ""        # the heading IEEE will print, e.g. "Methodology"
+    ieee_number: str = ""         # IEEE numbering: "III" for sections, "B" for subsections
+    mapping_confidence: float = 0.0   # 0.0 to 1.0 - how sure the mapper is
+    mapping_reason: str = ""      # plain-English explanation of the decision
+
     @property
     def paragraphs(self) -> List[str]:
         return [e.text for e in self.elements if e.kind == "paragraph"]
@@ -184,6 +191,9 @@ class StructuredPaper:
     # and for the "before" half of your evaluation.
     label_counts: dict = field(default_factory=dict)
 
+    # Filled in by stage 3: IEEE sections this paper does not have.
+    missing_sections: List[str] = field(default_factory=list)
+
     # Things the classifier noticed but could not fix, e.g. "no abstract found".
     warnings: List[str] = field(default_factory=list)
 
@@ -198,11 +208,8 @@ class StructuredPaper:
     def from_json(cls, path: str) -> "StructuredPaper":
         with open(path, encoding="utf-8") as f:
             data = json.load(f)
-        sections = [
-            Section(
-                heading=s["heading"], number=s["number"], level=s["level"],
-                elements=[Element(**e) for e in s["elements"]],
-            )
-            for s in data.pop("sections", [])
-        ]
+        sections = []
+        for s in data.pop("sections", []):
+            s["elements"] = [Element(**e) for e in s.get("elements", [])]
+            sections.append(Section(**s))
         return cls(sections=sections, **data)
