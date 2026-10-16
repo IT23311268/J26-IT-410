@@ -131,6 +131,8 @@ class ReferenceVerificationDetail(BaseModel):
     matched_doi: Optional[str] = None
     matched_arxiv: Optional[str] = None
     confidence: Optional[float] = None
+    verified_source: Optional[str] = None
+    source_url: Optional[str] = None
 
 class ReferenceVerificationResult(BaseModel):
     reference_text: str

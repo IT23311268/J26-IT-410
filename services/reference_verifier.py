@@ -671,6 +671,15 @@ def query_official_report(approx_title: str) -> list:
                             authors = [v.get("labels", {}).get("en", {}).get("value", "") for v in r_a.json().get("entities", {}).values()]
                     except Exception:
                         pass
+                    work_url = None
+                    try:
+                        p953 = claims.get("P953", [])
+                        if p953:
+                            v = p953[0].get("mainsnak", {}).get("datavalue", {}).get("value")
+                            if isinstance(v, str) and v.startswith("http"):
+                                work_url = v
+                    except Exception:
+                        pass
                     results.append({
                         "source": "Official Report",
                         "title": label,
@@ -678,6 +687,7 @@ def query_official_report(approx_title: str) -> list:
                         "year": year,
                         "doi": None,
                         "arxiv": None,
+                        "url": work_url,
                         "raw": item
                     })
     except Exception:
@@ -836,6 +846,126 @@ def score_candidate(cand: dict, parsed: dict) -> dict:
         "identifier_score": ids,
         "confidence": min(1.0, round(confidence, 4))
     }
+
+def derive_source_urls(best_cand: dict, parsed: dict, internal_status: str) -> dict:
+    """
+    Derive authoritative source_url and verified_source label
+    from the best matched candidate. Only called for VERIFIED_REAL results.
+
+    URL priority (highest first):
+      1. DOI URL / ACL Anthology DOI
+      2. ACL Anthology
+      3. arXiv
+      4. Official publisher page / official report
+      5. OpenAlex landing page (last resort)
+
+    Returns a dict with keys: verified_source, source_url
+    """
+    if internal_status != "VERIFIED_REAL" or best_cand is None:
+        return {"verified_source": None, "source_url": None}
+
+    source_label = best_cand.get("source", "")
+    doi   = best_cand.get("doi")
+    arxiv = best_cand.get("arxiv")
+    raw   = best_cand.get("raw") or {}
+
+    # 1. Official URL already in reference text (e.g. OpenAI CDN PDF, publisher URL)
+    if "Official URL" in source_label:
+        official_url = (raw.get("url") or parsed.get("url") or "").strip()
+        if official_url:
+            domain_m = re.search(r"https?://([^/]+)", official_url)
+            domain = domain_m.group(1) if domain_m else "Official Page"
+            return {
+                "verified_source": f"Official URL ({domain})",
+                "source_url":      official_url,
+            }
+
+    # 2. DOI handling (including ACL Anthology and arXiv DOIs)
+    if doi:
+        doi_clean = doi.strip()
+        doi_url = f"https://doi.org/{doi_clean}"
+
+        # 2a. ACL Anthology DOI (10.18653/...)
+        if doi_clean.startswith("10.18653"):
+            suffix = doi_clean.split("/", 2)[-1]  # e.g. "v1/2023.emnlp-main.557"
+            acl_id = suffix.split("/", 1)[-1] if "/" in suffix else suffix  # "2023.emnlp-main.557"
+            return {
+                "verified_source": "ACL Anthology",
+                "source_url":      f"https://aclanthology.org/{acl_id}/",
+            }
+
+        # 2b. arXiv DOI (10.48550/arXiv....)
+        if "10.48550/arxiv." in doi_clean.lower():
+            clean_id = re.sub(r"^.*10\.48550/arXiv\.", "", doi_clean, flags=re.I).strip()
+            return {
+                "verified_source": "arXiv",
+                "source_url":      f"https://arxiv.org/abs/{clean_id}",
+            }
+
+        # Check raw for ACL Anthology hint
+        raw_str = str(raw)
+        acl_m = re.search(r"aclanthology\.org/([A-Za-z0-9.\-]+)", raw_str)
+        if acl_m:
+            acl_id = acl_m.group(1).rstrip("/")
+            return {
+                "verified_source": "ACL Anthology",
+                "source_url":      f"https://aclanthology.org/{acl_id}/",
+            }
+
+        # Generic DOI: source_url is DOI URL; no PDF fabricated
+        return {
+            "verified_source": "DOI",
+            "source_url":      doi_url,
+        }
+
+    # 3. arXiv ID
+    if arxiv:
+        arxiv_clean = arxiv.lower().replace("arxiv:", "").strip()
+        return {
+            "verified_source": "arXiv",
+            "source_url":      f"https://arxiv.org/abs/{arxiv_clean}",
+        }
+
+    # 4. Official Report / Tech report
+    if "Official Report" in source_label or "DBLP" in source_label:
+        report_url = best_cand.get("url") or (raw.get("url") if isinstance(raw, dict) else None) or parsed.get("url")
+        if report_url and isinstance(report_url, str) and report_url.startswith("http"):
+            domain_m = re.search(r"https?://([^/]+)", report_url)
+            domain = domain_m.group(1) if domain_m else "Official Page"
+            return {
+                "verified_source": f"Official Report ({domain})",
+                "source_url":      report_url,
+            }
+        return {"verified_source": source_label, "source_url": None}
+
+    # 5. OpenAlex fallback
+    if "OpenAlex" in source_label or "OpenReview" in source_label:
+        landing = raw.get("id") or raw.get("landing_page_url") or raw.get("url")
+        if landing and str(landing).startswith("http"):
+            return {
+                "verified_source": source_label,
+                "source_url":      str(landing),
+            }
+
+    # 6. Check if raw has DOI
+    if isinstance(raw, dict):
+        nested_doi = raw.get("DOI") or raw.get("doi")
+        if nested_doi and isinstance(nested_doi, str):
+            doi_clean = nested_doi.strip()
+            doi_url = f"https://doi.org/{doi_clean}"
+            if doi_clean.startswith("10.18653"):
+                suffix  = doi_clean.split("/", 2)[-1]
+                acl_id  = suffix.split("/", 1)[-1] if "/" in suffix else suffix
+                return {
+                    "verified_source": "ACL Anthology",
+                    "source_url":      f"https://aclanthology.org/{acl_id}/",
+                }
+            return {
+                "verified_source": "DOI",
+                "source_url":      doi_url,
+            }
+
+    return {"verified_source": source_label or None, "source_url": None}
 
 # ── Decision Hierarchy & Classification ────────────────────────────────────────
 
@@ -1066,6 +1196,8 @@ def verify_reference(ref_text: str, ref_index: int = 1) -> dict:
     safe_print(f"frontend_status: {frontend_status}")
     safe_print(f"final_reason: {reason}")
 
+    url_info = derive_source_urls(best_cand, parsed, internal_status)
+
     return {
         "status": frontend_status,
         "reason": reason,
@@ -1079,6 +1211,8 @@ def verify_reference(ref_text: str, ref_index: int = 1) -> dict:
         "matched_doi": best_cand["doi"] if best_cand else None,
         "matched_arxiv": best_cand.get("arxiv") if best_cand else None,
         "confidence": round(best_conf, 4) if best_conf > 0 else 0.0,
+        "verified_source": url_info.get("verified_source"),
+        "source_url": url_info.get("source_url"),
     }
 
 # ── Document-Level Verification ────────────────────────────────────────────────
