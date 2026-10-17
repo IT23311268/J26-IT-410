@@ -1,0 +1,40 @@
+﻿Parsed reference numbers: ['1', '2', '3', '4', '5', '6', '7', '8', '9', '10', '11', '12', '13']
+
+Extracted 7 cited claims from Literature Review
+
+======================================================================
+
+[REFERENCE RESOLUTION] claim_id=C1
+  citation_marker : '[5]'
+  numbers found   : ['5']
+  reference_found : YES  [5] P. Manakul, A. Liusie, and M. J. F. Gales, ΓÇ£SelfCheckGPT: Zero-resource black-bo
+
+[REFERENCE RESOLUTION] claim_id=C2
+  citation_marker : '[6]'
+  numbers found   : ['6']
+  reference_found : YES  [6] S. Wiegreffe and Y. Pinter, ΓÇ£Attention is not not explanation,ΓÇ¥ 2019.
+
+[REFERENCE RESOLUTION] claim_id=C3
+  citation_marker : '[7]'
+  numbers found   : ['7']
+  reference_found : YES  [7] H. Sansford, N. Richardson, H. P. Maretic, and J. N. Saada, ΓÇ£GraphEval: A Knowle
+
+[REFERENCE RESOLUTION] claim_id=C4
+  citation_marker : '[7]'
+  numbers found   : ['7']
+  reference_found : YES  [7] H. Sansford, N. Richardson, H. P. Maretic, and J. N. Saada, ΓÇ£GraphEval: A Knowle
+
+[REFERENCE RESOLUTION] claim_id=C5
+  citation_marker : '[8]'
+  numbers found   : ['8']
+  reference_found : YES  [8] Z. J. Wang, F. Hohman, and D. H. Chau, ΓÇ£WizMap: Scalable interactive visualizati
+
+[REFERENCE RESOLUTION] claim_id=C6
+  citation_marker : '[9]'
+  numbers found   : ['9']
+  reference_found : YES  [9] R. Qiu, Y. Tu, P.-Y. Yen, and H.-W. Shen, ΓÇ£VADIS: A visual analytics pipeline fo
+
+[REFERENCE RESOLUTION] claim_id=C7
+  citation_marker : '[10]'
+  numbers found   : ['10']
+  reference_found : YES  [10] P. Hase, M. Diab, A. Celikyilmaz, X. Li, Z. Kozareva, V. Stoyanov, M. Bansal, an

@@ -278,49 +278,6 @@ function ClaimRow({ claim }) {
   );
 }
 
-// ── Download Report ───────────────────────────────────────────────────────────
-
-function DownloadReportButton({ result }) {
-  const handleDownload = () => {
-    const report = {
-      analysis_id: result.analysis_id,
-      generated_at: new Date().toISOString(),
-      summary: result.summary,
-      claims: result.claims.map((c) => ({
-        claim_id: c.claim_id,
-        claim_text: c.claim_text,
-        citation_text: c.citation_text,
-        resolved_reference: c.resolved_reference,
-        resolved_reference_number: c.resolved_reference_number,
-        reference_entry_found: c.reference_entry_found,
-        cited_paper_matched: c.cited_paper_matched,
-        citation_link_status: c.citation_link_status,
-        content_verification_status: c.content_verification_status,
-        hallucination_confidence: c.hallucination_confidence,
-        hallucination_reason: c.hallucination_reason,
-        top_evidence: c.evidence.slice(0, 1).map((e) => ({
-          paper: e.paper,
-          page: e.page,
-          similarity_score: e.similarity_score,
-        })),
-      })),
-    };
-    const blob = new Blob([JSON.stringify(report, null, 2)], { type: 'application/json' });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = `hallucination_report_${result.analysis_id?.slice(0, 8)}.json`;
-    a.click();
-    URL.revokeObjectURL(url);
-  };
-
-  return (
-    <button className="download-btn" onClick={handleDownload} title="Download JSON verification report">
-      ⬇ Download Report (JSON)
-    </button>
-  );
-}
-
 // ── Main AnalysisResults Component ───────────────────────────────────────────
 
 function AnalysisResults({ result }) {
@@ -348,7 +305,6 @@ function AnalysisResults({ result }) {
               <span className={`status-badge-sm ${result.status}`}>● {result.status}</span>
               <span className="result-msg-text">{result.message}</span>
             </div>
-            <DownloadReportButton result={result} />
           </div>
 
           {/* Summary Cards */}
