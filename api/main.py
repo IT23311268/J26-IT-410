@@ -7,8 +7,10 @@ Endpoints:
   GET  /paper/{paper_id}                 fetch a previously ingested paper's IngestionResult
   GET  /paper/{paper_id}/page/{n}        the rendered PNG of page n (Box 2 output)
   GET  /paper/{paper_id}/page/{n}/layout the same page with detected regions drawn on it (Box 3)
+  GET  /paper/{paper_id}/walkthrough     result + re-run baseline as JSON, for the React client
   GET  /gallery/{paper_id}               every rendered page as one contact sheet (demo view)
   GET  /papers                           list all ingested paper_ids
+  GET  /app                              the React walkthrough (built from web/)
 
 Run locally:
     uvicorn api.main:app --reload --port 8000 \
@@ -33,6 +35,7 @@ from urllib.parse import quote
 
 from fastapi import FastAPI, File, HTTPException, Query, Response, UploadFile
 from fastapi.responses import FileResponse, HTMLResponse, JSONResponse
+from fastapi.staticfiles import StaticFiles
 
 from api import storage
 from api.compare import render_comparison
@@ -208,6 +211,41 @@ def get_paper(paper_id: str) -> IngestionResult:
     return _load_or_404(paper_id)
 
 
+@app.get("/paper/{paper_id}/walkthrough")
+def get_walkthrough(paper_id: str) -> JSONResponse:
+    """Everything the walkthrough needs, in one request.
+
+    /pipeline renders the same material server-side; this returns it as
+    JSON so a client can render it instead. The baseline is re-run here
+    rather than stored, exactly as /pipeline and /compare do it — a
+    stored copy would quietly flatter us as the baseline changed.
+
+    `baseline` is null when the source PDF was not kept. That is a real
+    state, not an error: the walkthrough still has seven stages to show
+    and only the comparison at the end is missing, so this returns 200
+    and lets the client say so.
+    """
+    result = _load_or_404(paper_id)
+
+    source = storage.source_path(paper_id)
+    baseline = None
+    source_bytes = None
+    if source is not None:
+        source_bytes = source.stat().st_size
+        try:
+            baseline = extract_baseline(source)
+        except Exception:  # noqa: BLE001 — six stages are worth more than the seventh
+            baseline = None
+
+    return JSONResponse(
+        content={
+            "result": result.model_dump(mode="json"),
+            "baseline": baseline.model_dump(mode="json") if baseline else None,
+            "source_bytes": source_bytes,
+        }
+    )
+
+
 def _page_or_404(result: IngestionResult, paper_id: str, page_index: int) -> PageImage:
     page = next((p for p in result.pages if p.page_index == page_index), None)
     if page is None:
@@ -373,3 +411,44 @@ def compare(paper_id: str) -> HTMLResponse:
 @app.get("/papers")
 def list_papers() -> JSONResponse:
     return JSONResponse(content={"paper_ids": storage.list_paper_ids()})
+
+
+# --------------------------------------------------------------------------
+# the React walkthrough
+# --------------------------------------------------------------------------
+#
+# /app is the same walkthrough as /pipeline, built as a React client
+# that reads /paper/{id}/walkthrough. The two are deliberately both
+# here: /pipeline needs no build step and cannot fail at a demo, and
+# /app is the one the group develops from now on. Nothing is deleted
+# until the React view has been presented once and survived it.
+#
+# The build output is committed, so the demo machine needs neither Node
+# nor a network. `cd web && npm run build` regenerates it.
+#
+# This mount is last on purpose. StaticFiles with html=True answers
+# anything under its prefix, so mounting it earlier would be harmless
+# here — every route above is outside /app — but the ordering is the
+# habit that keeps it that way.
+_APP_BUILD = Path(__file__).resolve().parent / "static" / "app"
+
+if (_APP_BUILD / "index.html").exists():
+    app.mount("/app", StaticFiles(directory=_APP_BUILD, html=True), name="app")
+else:  # pragma: no cover - only hit on a clone that has not built the client
+    @app.get("/app", response_class=HTMLResponse, include_in_schema=False)
+    def app_not_built() -> HTMLResponse:
+        """Say which command is missing rather than 404-ing.
+
+        A 404 here reads as a broken route. The route is fine; the
+        client has not been built in this checkout.
+        """
+        return HTMLResponse(
+            "<!doctype html><meta charset='utf-8'>"
+            "<title>Client not built</title>"
+            "<body style='font:16px/1.6 system-ui;max-width:52ch;margin:14vh auto;padding:0 24px'>"
+            "<h1 style='font-size:20px'>The React walkthrough has not been built</h1>"
+            "<p>Run <code>cd web &amp;&amp; npm install &amp;&amp; npm run build</code>, "
+            "then reload this page.</p>"
+            "<p><a href='/'>The server-rendered views still work.</a></p>",
+            status_code=503,
+        )
