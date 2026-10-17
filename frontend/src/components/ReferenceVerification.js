@@ -323,8 +323,7 @@ function ReferenceVerification({ paperFilenames }) {
         Bibliography Audit — Real vs Fake Reference Check
       </h2>
       <p className="section-description">
-        Upload the paper whose bibliography you want to audit. Each reference will be
-        checked against Crossref and arXiv to determine if it is a real publication or fabricated.
+        Upload the paper whose bibliography you want to audit.
       </p>
 
       {/* PDF Drop Zone */}
