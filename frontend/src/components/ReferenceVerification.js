@@ -28,12 +28,15 @@ function ReferenceRow({ ref_item, index }) {
   const [expanded, setExpanded] = useState(false);
   const v = ref_item.verification;
 
-    const matchedTitle = v.matched_title;
+  const matchedTitle = v.matched_title;
   const matchedDOI = v.matched_doi;
   const matchedAuthor = v.matched_authors;
   const matchedArxiv = v.matched_arxiv;
   const matchedYear = v.matched_year;
   const matchedSource = v.matched_source || 'Crossref';
+  const verifiedSource = v.verified_source;
+  const sourceUrl = v.source_url;
+  const isReal = v.status === 'REAL';
 
   return (
     <>
@@ -55,13 +58,40 @@ function ReferenceRow({ ref_item, index }) {
         <td className="conf-cell">
           <ScoreBadge score={v.score} />
         </td>
+        <td className="actions-cell" onClick={(e) => e.stopPropagation()}>
+          {isReal && sourceUrl && (
+            <a
+              href={sourceUrl}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="paper-link-btn"
+              style={{
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: '4px',
+                fontSize: '0.75rem',
+                padding: '3px 8px',
+                borderRadius: '4px',
+                background: '#e0e7ff',
+                color: '#3730a3',
+                textDecoration: 'none',
+                fontWeight: 600,
+                whiteSpace: 'nowrap',
+                width: 'fit-content'
+              }}
+              title="Open authoritative source page"
+            >
+              🔗 View Paper
+            </a>
+          )}
+        </td>
         <td className="expand-cell">
           <button className="expand-btn">{expanded ? '▲' : '▼'}</button>
         </td>
       </tr>
       {expanded && (
         <tr className="detail-row-wrapper">
-          <td colSpan={5}>
+          <td colSpan={6}>
             <div className="claim-detail">
               <div className="detail-section">
                 <h4 className="detail-heading">📄 Full Reference Text</h4>
@@ -83,6 +113,29 @@ function ReferenceRow({ ref_item, index }) {
                     <span className="detail-label">Reason</span>
                     <span className="detail-value-text">{v.reason}</span>
                   </div>
+                  {isReal && verifiedSource && (
+                    <div className="detail-row">
+                      <span className="detail-label">Verified Source</span>
+                      <span className="detail-value-text" style={{ fontWeight: 600, color: '#166534' }}>
+                        {verifiedSource}
+                      </span>
+                    </div>
+                  )}
+                  {isReal && sourceUrl && (
+                    <div className="detail-row">
+                      <span className="detail-label">Source Page</span>
+                      <a
+                        className="detail-value-text"
+                        href={sourceUrl}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        onClick={(e) => e.stopPropagation()}
+                        style={{ color: '#1e40af', textDecoration: 'underline', fontWeight: 600 }}
+                      >
+                        Open ↗
+                      </a>
+                    </div>
+                  )}
                 </div>
 
                                 {matchedTitle && (
@@ -364,6 +417,7 @@ function ReferenceVerification({ paperFilenames }) {
                     <th>Reference</th>
                     <th>Status</th>
                     <th>Match Score</th>
+                    <th>Actions</th>
                     <th></th>
                   </tr>
                 </thead>
