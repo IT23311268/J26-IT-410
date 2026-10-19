@@ -28,22 +28,25 @@ def _get_model() -> SentenceTransformer:
 
 # ── Embedding Generation ────────────────────────────────────────────────────
 
-def generate_embeddings(texts: List[str], batch_size: int = 64) -> np.ndarray:
+def generate_embeddings(texts: List[str], batch_size: int = 32) -> np.ndarray:
     """
     Generate embeddings for a list of texts.
 
     Returns:
         A numpy array of shape (len(texts), embedding_dim).
     """
+    import torch
     model = _get_model()
-    embeddings = model.encode(
-        texts,
-        batch_size=batch_size,
-        show_progress_bar=False,
-        convert_to_numpy=True,
-        normalize_embeddings=True,  # Enables cosine similarity via dot product
-    )
+    with torch.inference_mode():
+        embeddings = model.encode(
+            texts,
+            batch_size=batch_size,
+            show_progress_bar=False,
+            convert_to_numpy=True,
+            normalize_embeddings=True,  # Enables cosine similarity via dot product
+        )
     return embeddings.astype("float32")
+
 
 
 # ── FAISS Index ──────────────────────────────────────────────────────────────

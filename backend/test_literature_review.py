@@ -30,9 +30,9 @@ def test_pipeline():
         print(f"\nClaim: {c['claim_text']}")
         print(f"Citation: {c['citation_text']}")
         print(f"Resolved Ref: {c.get('resolved_reference')}")
-        print(f"Hallucination: {c['hallucination_status']} ({c['hallucination_reason']})")
-        print(f"Citation Status: {c['citation_status']} ({c['citation_reason']})")
-        print(f"Evidence chunks: {len(c['evidence'])}")
+        print(f"Content Verification: {c.get('content_verification_status')} ({c.get('hallucination_reason')})")
+        print(f"Citation Link Status: {c.get('citation_link_status')}")
+        print(f"Evidence chunks: {len(c.get('evidence', []))}")
 
 if __name__ == "__main__":
     test_pipeline()

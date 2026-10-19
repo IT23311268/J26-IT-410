@@ -56,10 +56,16 @@ _LABEL_CONTRADICTION = 0
 _LABEL_ENTAILMENT = 1
 _LABEL_NEUTRAL = 2
 
+# Cached label indices — resolved once after model load.
+_cached_contradiction_idx: Optional[int] = None
+_cached_entailment_idx: Optional[int] = None
+_cached_neutral_idx: Optional[int] = None
+
 
 def _get_nli_model():
     """Lazy-load the NLI model and tokenizer."""
     global _nli_model, _nli_tokenizer
+    global _cached_contradiction_idx, _cached_entailment_idx, _cached_neutral_idx
 
     if _nli_model is None:
         try:
@@ -78,6 +84,13 @@ def _get_nli_model():
 
             logger.info("NLI model loaded: %s", NLI_MODEL)
             logger.info("NLI id2label: %s", _nli_model.config.id2label)
+
+            # Cache label indices once — avoids resolving on every call.
+            (
+                _cached_contradiction_idx,
+                _cached_entailment_idx,
+                _cached_neutral_idx,
+            ) = _resolve_label_indices(_nli_model)
 
         except Exception as exc:
             logger.exception(
@@ -749,7 +762,7 @@ def _run_nli(
     hypothesis: str,
     evidence_page: str = "",
 ) -> Dict[str, float]:
-    """Run sentence-level NLI."""
+    """Run sentence-level NLI (single pair)."""
     import torch
     import torch.nn.functional as F
 
@@ -788,21 +801,26 @@ def _run_nli(
 
         probabilities = F.softmax(logits, dim=0)
 
-        (
-            contradiction_idx,
-            entailment_idx,
-            neutral_idx,
-        ) = _resolve_label_indices(model)
+        # Use cached indices when available.
+        c_idx = (
+            _cached_contradiction_idx
+            if _cached_contradiction_idx is not None
+            else _resolve_label_indices(model)[0]
+        )
+        e_idx = (
+            _cached_entailment_idx
+            if _cached_entailment_idx is not None
+            else _resolve_label_indices(model)[1]
+        )
+        n_idx = (
+            _cached_neutral_idx
+            if _cached_neutral_idx is not None
+            else _resolve_label_indices(model)[2]
+        )
 
-        contradiction = float(
-            probabilities[contradiction_idx].item()
-        )
-        entailment = float(
-            probabilities[entailment_idx].item()
-        )
-        neutral = float(
-            probabilities[neutral_idx].item()
-        )
+        contradiction = float(probabilities[c_idx].item())
+        entailment = float(probabilities[e_idx].item())
+        neutral = float(probabilities[n_idx].item())
 
         logger.info(
             "NLI SENTENCE | %s | C=%.4f E=%.4f N=%.4f",
@@ -826,6 +844,98 @@ def _run_nli(
             "neutral": 0.33,
             "contradiction": 0.33,
         }
+
+
+def _run_nli_batch(
+    pairs: List[Tuple[str, str]],
+) -> List[Dict[str, float]]:
+    """
+    Run batched NLI inference on a list of (premise, hypothesis) pairs.
+
+    Processes all pairs in a single model forward pass, which is
+    significantly faster than calling _run_nli() one pair at a time on CPU.
+
+    Returns a list of result dicts in the same order as the input pairs.
+    """
+    import torch
+    import torch.nn.functional as F
+
+    if not pairs:
+        return []
+
+    model, tokenizer = _get_nli_model()
+
+    if (
+        model == "FAILED"
+        or model is None
+        or tokenizer is None
+    ):
+        return [
+            {"entailment": 0.34, "neutral": 0.33, "contradiction": 0.33}
+            for _ in pairs
+        ]
+
+    # Use cached label indices.
+    c_idx = (
+        _cached_contradiction_idx
+        if _cached_contradiction_idx is not None
+        else _resolve_label_indices(model)[0]
+    )
+    e_idx = (
+        _cached_entailment_idx
+        if _cached_entailment_idx is not None
+        else _resolve_label_indices(model)[1]
+    )
+    n_idx = (
+        _cached_neutral_idx
+        if _cached_neutral_idx is not None
+        else _resolve_label_indices(model)[2]
+    )
+
+    premises = [p for p, _ in pairs]
+    hypotheses = [h for _, h in pairs]
+
+    results = []
+    sub_batch_size = 32
+
+    try:
+        with torch.inference_mode():
+            for i in range(0, len(pairs), sub_batch_size):
+                chunk_pairs = pairs[i : i + sub_batch_size]
+                p_sub = [p for p, _ in chunk_pairs]
+                h_sub = [h for _, h in chunk_pairs]
+
+                inputs = tokenizer(
+                    p_sub,
+                    h_sub,
+                    return_tensors="pt",
+                    truncation=True,
+                    max_length=256,
+                    padding=True,
+                )
+
+                logits = model(**inputs).logits
+                probabilities = F.softmax(logits, dim=1)
+
+                for j in range(len(chunk_pairs)):
+                    probs = probabilities[j]
+                    results.append({
+                        "entailment": float(probs[e_idx].item()),
+                        "contradiction": float(probs[c_idx].item()),
+                        "neutral": float(probs[n_idx].item()),
+                    })
+
+        return results
+
+    except Exception as exc:
+        logger.exception("Batch NLI inference failed: %s", exc)
+        # Fall back to individual calls.
+        fallback_results = []
+        for premise, hypothesis in pairs:
+            fallback_results.append(
+                _run_nli(premise, hypothesis)
+            )
+        return fallback_results
 
 
 # ================================================================
@@ -875,8 +985,12 @@ def evaluate_and_rerank_evidence(
     )
 
     # ------------------------------------------------------------
-    # Evaluate candidate sentences
+    # Phase 1 — collect all candidate sentences (no NLI yet)
     # ------------------------------------------------------------
+
+    # Each entry: (chunk, sentence, relevance, overlap, num_mismatch,
+    #              direct_conflict, conflict_type)
+    candidate_records = []
 
     for chunk in raw_evidence:
         chunk_text = (
@@ -920,20 +1034,8 @@ def evaluate_and_rerank_evidence(
             reverse=True,
         )
 
-        # Evaluate the top 3 lexically relevant sentences
-        # from each retrieved chunk.
+        # Take the top 3 lexically relevant sentences from each chunk.
         for relevance, overlap, sentence in ranked_sentences[:3]:
-            page_label = (
-                f"{chunk.get('paper', '')} "
-                f"p{chunk.get('page', '?')}"
-            )
-
-            nli = _run_nli(
-                premise=sentence,
-                hypothesis=hypothesis,
-                evidence_page=page_label,
-            )
-
             num_mismatch = _numerical_mismatch(
                 hypothesis,
                 sentence,
@@ -948,26 +1050,76 @@ def evaluate_and_rerank_evidence(
                 num_mismatch,
             )
 
-            sentence_results.append(
-                {
-                    "chunk": chunk,
-                    "sentence": sentence,
-                    "similarity_score":
-                        chunk_similarity,
-                    "lexical_relevance":
-                        relevance,
-                    "overlap_count":
-                        overlap,
-                    "num_mismatch":
-                        num_mismatch,
-                    "direct_conflict":
-                        direct_conflict,
-                    "conflict_type":
-                        conflict_type,
-                    "nli":
-                        nli,
-                }
+            candidate_records.append(
+                (
+                    chunk,
+                    chunk_similarity,
+                    sentence,
+                    relevance,
+                    overlap,
+                    num_mismatch,
+                    direct_conflict,
+                    conflict_type,
+                )
             )
+
+    # ------------------------------------------------------------
+    # Phase 2 — batch NLI on all candidate sentences at once
+    # ------------------------------------------------------------
+
+    if not candidate_records:
+        return (
+            {
+                "hallucination_status":
+                    "INSUFFICIENT_EVIDENCE",
+                "hallucination_confidence":
+                    1.0,
+                "hallucination_reason":
+                    "No usable evidence sentences were found.",
+            },
+            raw_evidence[:max(1, top_k)],
+        )
+
+    nli_pairs = [
+        (rec[2], hypothesis)   # (sentence, hypothesis)
+        for rec in candidate_records
+    ]
+
+    nli_results = _run_nli_batch(nli_pairs)
+
+    # Assemble sentence_results with NLI scores.
+    for rec, nli in zip(candidate_records, nli_results):
+        (
+            chunk,
+            chunk_similarity,
+            sentence,
+            relevance,
+            overlap,
+            num_mismatch,
+            direct_conflict,
+            conflict_type,
+        ) = rec
+
+        sentence_results.append(
+            {
+                "chunk": chunk,
+                "sentence": sentence,
+                "similarity_score":
+                    chunk_similarity,
+                "lexical_relevance":
+                    relevance,
+                "overlap_count":
+                    overlap,
+                "num_mismatch":
+                    num_mismatch,
+                "direct_conflict":
+                    direct_conflict,
+                "conflict_type":
+                    conflict_type,
+                "nli":
+                    nli,
+            }
+        )
 
     if not sentence_results:
         return (
@@ -981,6 +1133,8 @@ def evaluate_and_rerank_evidence(
             },
             raw_evidence[:max(1, top_k)],
         )
+
+
 
     # ------------------------------------------------------------
     # BEST SUPPORT

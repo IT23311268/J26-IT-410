@@ -45,8 +45,10 @@ def safe_print(*args, **kwargs):
     except Exception:
         pass
 
+import os
 import re
 import time
+import concurrent.futures
 from typing import Dict, List, Optional
 
 from services.claim_extractor import extract_claims
@@ -76,6 +78,7 @@ CONTRADICTION_RETRIEVAL_TOP_K = 35
 
 # Maximum number of unique candidates sent to sentence-level verifier.
 MAX_VERIFICATION_CANDIDATES = 100
+
 
 
 # ================================================================
@@ -390,6 +393,8 @@ def _match_reference_to_paper(ref: Dict, metadata_dict: Dict[str, dict]) -> Opti
             
     logger.info("Matched reference to paper: None")
     return None
+
+
 
 
 # ================================================================
@@ -1083,6 +1088,260 @@ def _compute_summary(
 # MAIN ANALYSIS PIPELINE
 # ================================================================
 
+# ----------------------------------------------------------------
+# Per-claim worker (called concurrently via ThreadPoolExecutor)
+# ----------------------------------------------------------------
+
+def _process_single_claim(
+    claim: dict,
+    bibliography_entries: List[Dict],
+    metadata_dict: Dict,
+    faiss_index,
+    top_k: int,
+) -> dict:
+    """
+    Process a single claim through the full verification pipeline.
+
+    This function is safe to call from multiple threads sharing the
+    same loaded NLI model — PyTorch inference under torch.no_grad()
+    is thread-safe for read-only model weights.
+    """
+    claim_id = claim.get("claim_id")
+    claim_text = claim.get("claim_text", "")
+    citation_text = claim.get("citation_text")
+
+    # 5A — Match citation to reference paper
+    resolved_ref = resolve_citation_to_reference(citation_text, bibliography_entries)
+    reference_entry_found = resolved_ref is not None
+    target_paper = None
+    if resolved_ref:
+        target_paper = _match_reference_to_paper(resolved_ref, metadata_dict)
+
+    safe_print(
+        f"\n[REFERENCE RESOLUTION]"
+        f"\n  claim_id         : {claim_id}"
+        f"\n  citation_marker  : {citation_text}"
+        f"\n  parsed_numbers   : {_expand_numeric_citation(citation_text or '')}"
+        f"\n  reference_found  : {'YES' if reference_entry_found else 'NO'}"
+    )
+    if resolved_ref:
+        safe_print(
+            f"  resolved_ref_num : {resolved_ref.get('ref_num')}"
+            f"\n  resolved_text    : {resolved_ref.get('ref_text', '')[:100]}"
+            f"\n  cited_paper_matched : {'YES — ' + target_paper if target_paper else 'NO (PDF not uploaded)'}"
+        )
+    else:
+        safe_print(
+            f"  reason           : citation marker not in parsed bibliography"
+        )
+
+    # 5B — Strip citation before verification
+    clean_claim = (
+        _strip_citation_from_claim(claim_text, citation_text)
+    ).strip()
+    verification_claim = clean_claim
+
+    safe_print(
+        "\n[VERIFY] " "========================================"
+    )
+    safe_print(f"[VERIFY] Claim ID: {claim_id}")
+    safe_print(f"[VERIFY] Original claim: {claim_text}")
+    safe_print(f"[VERIFY] Citation: {citation_text}")
+    safe_print(f"[VERIFY] Matched paper: {target_paper}")
+    safe_print(f"[VERIFY] NLI verification claim: {verification_claim}")
+
+    # 5C — Show retrieval queries
+    retrieval_queries = _build_retrieval_queries(verification_claim)
+    safe_print("[VERIFY] Retrieval queries:")
+    for qi, q in enumerate(retrieval_queries, start=1):
+        safe_print(f"    Q{qi}: {q}")
+    safe_print("[VERIFY] " "========================================")
+
+    # 5D — Retrieve candidate evidence
+    if target_paper:
+        raw_evidence = _retrieve_evidence(
+            faiss_index=faiss_index,
+            verification_claim=verification_claim,
+            target_paper=target_paper,
+        )
+    else:
+        raw_evidence = []
+        logger.info("Skipping retrieval: no matched target paper.")
+
+    logger.info(
+        "Retrieved %d unique candidate chunks for claim %s.",
+        len(raw_evidence),
+        claim_id,
+    )
+
+    # 5E — Sentence-level NLI reranking
+    (
+        verification_result,
+        selected_evidence,
+    ) = evaluate_and_rerank_evidence(
+        subclaim_text=verification_claim,
+        raw_evidence=raw_evidence,
+        target_paper=target_paper,
+        top_k=max(top_k, 3),
+    )
+
+    hallucination_status = verification_result.get(
+        "hallucination_status", "INSUFFICIENT_EVIDENCE"
+    )
+    hallucination_confidence = verification_result.get(
+        "hallucination_confidence", 0.0
+    )
+    hallucination_reason = verification_result.get(
+        "hallucination_reason",
+        "Unable to determine claim verification status.",
+    )
+
+    safe_print(
+        f"[VERIFY RESULT] {claim_id} -> "
+        f"{hallucination_status} ({hallucination_confidence:.4f})"
+    )
+
+    # 5F — Deduplicate selected evidence
+    unique_evidence = _deduplicate_evidence(selected_evidence)
+
+    # 5G — Citation link / content status
+    citation_link_status = "LINK_VALID" if reference_entry_found else "LINK_NOT_FOUND"
+    content_verification_status = (
+        hallucination_status if target_paper else "NOT_AVAILABLE"
+    )
+
+    # 5H — Build final claim result
+    return {
+        "claim_id": claim_id,
+        "claim_text": claim_text,
+        "citation_text": citation_text,
+        "resolved_reference": resolved_ref.get("ref_text") if resolved_ref else None,
+        "resolved_reference_number": resolved_ref.get("ref_num") if resolved_ref else None,
+        "reference_entry_found": reference_entry_found,
+        "cited_paper_matched": target_paper is not None,
+        "citation_link_status": citation_link_status,
+        "content_verification_status": content_verification_status,
+        "hallucination_confidence": hallucination_confidence,
+        "hallucination_reason": (
+            hallucination_reason if target_paper
+            else "The actual cited reference paper was not uploaded."
+        ),
+        "evidence": unique_evidence[:max(top_k, 3)],
+    }
+
+
+# ================================================================
+# MODULE-LEVEL CACHE FOR FAISS INDEX & EXTRACTED PDF CHUNKS
+# ================================================================
+
+
+_pdf_cache: dict = {
+    "fingerprint": None,
+    "pages": None,
+    "metadata_dict": None,
+    "chunks": None,
+    "faiss_index": None,
+}
+
+
+def _get_uploads_fingerprint(uploads_dir: str):
+    """
+    Compute a fingerprint for the uploads directory based on
+    file names, sizes, and modification timestamps.
+    """
+    try:
+        if not os.path.exists(uploads_dir):
+            return None
+        pdf_files = [
+            f
+            for f in os.listdir(uploads_dir)
+            if f.lower().endswith(".pdf")
+            and not f.startswith(".")
+            and os.path.isfile(os.path.join(uploads_dir, f))
+        ]
+        pdf_files.sort()
+        return tuple(
+            (
+                f,
+                os.path.getsize(os.path.join(uploads_dir, f)),
+                os.path.getmtime(os.path.join(uploads_dir, f)),
+            )
+            for f in pdf_files
+        )
+    except Exception:
+        return None
+
+
+def _load_disk_cache(uploads_dir: str, fingerprint):
+    """Try loading cached FAISS index and chunks from disk."""
+    try:
+        import pickle
+        import faiss
+
+        cache_dir = os.path.join(uploads_dir, ".faiss_cache")
+        fp_path = os.path.join(cache_dir, "fingerprint.pkl")
+        index_path = os.path.join(cache_dir, "index.faiss")
+        data_path = os.path.join(cache_dir, "data.pkl")
+
+        if (
+            not os.path.exists(fp_path)
+            or not os.path.exists(index_path)
+            or not os.path.exists(data_path)
+        ):
+            return False
+
+        with open(fp_path, "rb") as f:
+            cached_fp = pickle.load(f)
+
+        if cached_fp != fingerprint:
+            return False
+
+        faiss_raw_index = faiss.read_index(index_path)
+        with open(data_path, "rb") as f:
+            data = pickle.load(f)
+
+        faiss_index = FAISSIndex()
+        faiss_index.index = faiss_raw_index
+        faiss_index.chunks = data["chunks"]
+
+        _pdf_cache["fingerprint"] = fingerprint
+        _pdf_cache["pages"] = data["pages"]
+        _pdf_cache["metadata_dict"] = data["metadata_dict"]
+        _pdf_cache["chunks"] = data["chunks"]
+        _pdf_cache["faiss_index"] = faiss_index
+        logger.info("Loaded cached FAISS index from disk (%s).", cache_dir)
+        return True
+    except Exception as exc:
+        logger.warning("Failed to load disk cache: %s", exc)
+        return False
+
+
+def _save_disk_cache(uploads_dir: str, fingerprint, pages, metadata_dict, chunks, faiss_index):
+    """Save FAISS index and chunks to disk for instant restart persistence."""
+    try:
+        import pickle
+        import faiss
+
+        cache_dir = os.path.join(uploads_dir, ".faiss_cache")
+        os.makedirs(cache_dir, exist_ok=True)
+
+        faiss.write_index(faiss_index.index, os.path.join(cache_dir, "index.faiss"))
+        with open(os.path.join(cache_dir, "fingerprint.pkl"), "wb") as f:
+            pickle.dump(fingerprint, f)
+        with open(os.path.join(cache_dir, "data.pkl"), "wb") as f:
+            pickle.dump(
+                {
+                    "pages": pages,
+                    "metadata_dict": metadata_dict,
+                    "chunks": chunks,
+                },
+                f,
+            )
+        logger.info("Saved FAISS index cache to disk (%s).", cache_dir)
+    except Exception as exc:
+        logger.warning("Failed to save disk cache: %s", exc)
+
+
 def run_analysis_pipeline(
     literature_review: str,
     uploads_dir: str,
@@ -1149,408 +1408,221 @@ def run_analysis_pipeline(
         }
 
     # ============================================================
-    # STEP 2 — Extract PDF text and metadata
+    # STEP 2, 3, 4 — Extract PDF text, Chunking, and FAISS Index
+    # (Cached: reuses existing index if uploaded PDFs have not changed)
     # ============================================================
 
-    pages, metadata_dict = (
-        extract_text_from_all_pdfs(
-            uploads_dir
-        )
+    uploads_fp = _get_uploads_fingerprint(uploads_dir)
+
+    # 1. Check in-memory cache
+    cache_hit = (
+        uploads_fp is not None
+        and _pdf_cache.get("fingerprint") == uploads_fp
+        and _pdf_cache.get("faiss_index") is not None
+        and _pdf_cache.get("pages")
     )
 
-    if not pages:
-        no_pdf_results = []
+    # 2. Check disk cache if in-memory missed
+    if not cache_hit and uploads_fp is not None:
+        cache_hit = _load_disk_cache(uploads_dir, uploads_fp)
 
-        for claim in claims:
-            citation_text = claim.get(
-                "citation_text"
-            )
-
-            resolved_ref = resolve_citation_to_reference(citation_text, bibliography_entries)
-            reference_entry_found = resolved_ref is not None
-
-            no_pdf_results.append(
-                {
-                    "claim_id":
-                        claim["claim_id"],
-
-                    "claim_text":
-                        claim["claim_text"],
-
-                    "citation_text":
-                        citation_text,
-
-                    "resolved_reference":
-                        resolved_ref.get("ref_text") if resolved_ref else None,
-
-                    "resolved_reference_number":
-                        resolved_ref.get("ref_num") if resolved_ref else None,
-
-                    "reference_entry_found":
-                        reference_entry_found,
-
-                    "cited_paper_matched":
-                        False,
-
-                    "citation_link_status":
-                        "LINK_VALID" if reference_entry_found else "LINK_NOT_FOUND",
-
-                    "content_verification_status":
-                        "NOT_AVAILABLE",
-
-                    "hallucination_confidence":
-                        0.0,
-
-                    "hallucination_reason":
-                        "No readable text could be extracted from the uploaded PDFs.",
-
-                    "evidence":
-                        [],
-                }
-            )
-
-        return {
-            "status":
-                "completed",
-
-            "total_claims":
-                len(no_pdf_results),
-
-            "total_chunks_indexed":
-                0,
-
-            "total_papers_processed":
-                0,
-
-            "processing_time_seconds":
-                round(
-                    time.time()
-                    - start_time,
-                    2,
-                ),
-
-            "summary":
-                _compute_summary(
-                    no_pdf_results
-                ),
-
-            "claims":
-                no_pdf_results,
-        }
-
-    # ============================================================
-    # STEP 3 — Sentence-aware chunking
-    # ============================================================
-
-    chunks = chunk_text(
-        pages,
-        sentences_per_chunk=4,
-        overlap_sentences=1,
-    )
-
-    logger.info(
-        "Created %d chunks from %d pages.",
-        len(chunks),
-        len(pages),
-    )
-
-    # ============================================================
-    # STEP 4 — Build FAISS index
-    # ============================================================
-
-    faiss_index = FAISSIndex()
-
-    total_indexed = (
-        faiss_index.build(
-            chunks
+    if cache_hit:
+        pages = _pdf_cache["pages"]
+        metadata_dict = _pdf_cache["metadata_dict"]
+        chunks = _pdf_cache["chunks"]
+        faiss_index = _pdf_cache["faiss_index"]
+        total_indexed = faiss_index.index.ntotal if faiss_index.index else len(chunks)
+        logger.info(
+            "Reusing cached FAISS index (%d chunks from %d papers).",
+            total_indexed,
+            len(metadata_dict),
         )
-    )
-
-    logger.info(
-        "FAISS index built with %d chunks.",
-        total_indexed,
-    )
-
-    # ============================================================
-    # STEP 5 — Verify every complete claim
-    # ============================================================
-
-    results = []
-
-    for claim in claims:
-        claim_id = claim.get(
-            "claim_id"
-        )
-
-        claim_text = claim.get(
-            "claim_text",
-            "",
-        )
-
-        citation_text = claim.get(
-            "citation_text"
-        )
-
-        # --------------------------------------------------------
-        # 5A — Match citation to reference paper
-        # --------------------------------------------------------
-
-        resolved_ref = resolve_citation_to_reference(citation_text, bibliography_entries)
-
-        reference_entry_found = resolved_ref is not None
-        target_paper = None
-        if resolved_ref:
-            target_paper = _match_reference_to_paper(resolved_ref, metadata_dict)
-
-        # ── Debug: reference resolution block ─────────────────────
-        safe_print(
-            f"\n[REFERENCE RESOLUTION]"
-            f"\n  claim_id         : {claim_id}"
-            f"\n  citation_marker  : {citation_text}"
-            f"\n  parsed_numbers   : {_expand_numeric_citation(citation_text or '')}"
-            f"\n  reference_found  : {'YES' if reference_entry_found else 'NO'}"
-        )
-        if resolved_ref:
-            safe_print(
-                f"  resolved_ref_num : {resolved_ref.get('ref_num')}"
-                f"\n  resolved_text    : {resolved_ref.get('ref_text', '')[:100]}"
-                f"\n  cited_paper_matched : {'YES — ' + target_paper if target_paper else 'NO (PDF not uploaded)'}"
-            )
-        else:
-            safe_print(
-                f"  reason           : citation marker not in parsed bibliography"
-            )
-
-        # --------------------------------------------------------
-        # 5B — Remove citation before verification
-        # --------------------------------------------------------
-
-        clean_claim = (
-            _strip_citation_from_claim(
-                claim_text,
-                citation_text,
-            )
-        ).strip()
-
-        # Verify the complete clean claim directly.
-        verification_claim = clean_claim
-
-        safe_print(
-            "\n"
-            "[VERIFY] "
-            "========================================"
-        )
-
-        safe_print(
-            f"[VERIFY] Claim ID: "
-            f"{claim_id}"
-        )
-
-        safe_print(
-            f"[VERIFY] Original claim: "
-            f"{claim_text}"
-        )
-
-        safe_print(
-            f"[VERIFY] Citation: "
-            f"{citation_text}"
-        )
-
-        safe_print(
-            f"[VERIFY] Matched paper: "
-            f"{target_paper}"
-        )
-
-        safe_print(
-            "[VERIFY] NLI verification claim: "
-            f"{verification_claim}"
-        )
-
-        # --------------------------------------------------------
-        # 5C — Show retrieval queries
-        # --------------------------------------------------------
-
-        retrieval_queries = (
-            _build_retrieval_queries(
-                verification_claim
+    else:
+        pages, metadata_dict = (
+            extract_text_from_all_pdfs(
+                uploads_dir
             )
         )
 
-        safe_print(
-            "[VERIFY] Retrieval queries:"
-        )
+        if not pages:
+            no_pdf_results = []
 
-        for query_index, query in enumerate(
-            retrieval_queries,
-            start=1,
-        ):
-            safe_print(
-                f"    Q{query_index}: {query}"
-            )
-
-        safe_print(
-            "[VERIFY] "
-            "========================================"
-        )
-
-        # --------------------------------------------------------
-        # 5D — Retrieve candidate evidence
-        # --------------------------------------------------------
-
-        if target_paper:
-            raw_evidence = (
-                _retrieve_evidence(
-                    faiss_index=faiss_index,
-                    verification_claim=(
-                        verification_claim
-                    ),
-                    target_paper=(
-                        target_paper
-                    ),
+            for claim in claims:
+                citation_text = claim.get(
+                    "citation_text"
                 )
+
+                resolved_ref = resolve_citation_to_reference(citation_text, bibliography_entries)
+                reference_entry_found = resolved_ref is not None
+
+                no_pdf_results.append(
+                    {
+                        "claim_id":
+                            claim["claim_id"],
+
+                        "claim_text":
+                            claim["claim_text"],
+
+                        "citation_text":
+                            citation_text,
+
+                        "resolved_reference":
+                            resolved_ref.get("ref_text") if resolved_ref else None,
+
+                        "resolved_reference_number":
+                            resolved_ref.get("ref_num") if resolved_ref else None,
+
+                        "reference_entry_found":
+                            reference_entry_found,
+
+                        "cited_paper_matched":
+                            False,
+
+                        "citation_link_status":
+                            "LINK_VALID" if reference_entry_found else "LINK_NOT_FOUND",
+
+                        "content_verification_status":
+                            "NOT_AVAILABLE",
+
+                        "hallucination_confidence":
+                            0.0,
+
+                        "hallucination_reason":
+                            "No readable text could be extracted from the uploaded PDFs.",
+
+                        "evidence":
+                            [],
+                    }
+                )
+
+            return {
+                "status":
+                    "completed",
+
+                "total_claims":
+                    len(no_pdf_results),
+
+                "total_chunks_indexed":
+                    0,
+
+                "total_papers_processed":
+                    0,
+
+                "processing_time_seconds":
+                    round(
+                        time.time()
+                        - start_time,
+                        2,
+                    ),
+
+                "summary":
+                    _compute_summary(
+                        no_pdf_results
+                    ),
+
+                "claims":
+                    no_pdf_results,
+            }
+
+        chunks = chunk_text(
+            pages,
+            sentences_per_chunk=4,
+            overlap_sentences=1,
+        )
+
+        faiss_index = FAISSIndex()
+        total_indexed = faiss_index.build(chunks)
+
+        # Store in module-level cache for instant reuse
+        _pdf_cache["fingerprint"] = uploads_fp
+        _pdf_cache["pages"] = pages
+        _pdf_cache["metadata_dict"] = metadata_dict
+        _pdf_cache["chunks"] = chunks
+        _pdf_cache["faiss_index"] = faiss_index
+
+        # Also persist to disk cache
+        if uploads_fp is not None:
+            _save_disk_cache(
+                uploads_dir,
+                uploads_fp,
+                pages,
+                metadata_dict,
+                chunks,
+                faiss_index,
             )
-        else:
-            raw_evidence = []
-            logger.info("Skipping retrieval: no matched target paper.")
 
         logger.info(
-            "Retrieved %d unique candidate chunks "
-            "for claim %s.",
-            len(raw_evidence),
-            claim_id,
+            "FAISS index built and cached with %d chunks.",
+            total_indexed,
         )
 
-        # --------------------------------------------------------
-        # 5E — Sentence-level NLI reranking
-        # --------------------------------------------------------
 
-        (
-            verification_result,
-            selected_evidence,
-        ) = evaluate_and_rerank_evidence(
-            subclaim_text=(
-                verification_claim
-            ),
 
-            raw_evidence=(
-                raw_evidence
-            ),
+    # ============================================================
+    # STEP 5 — Verify every complete claim (parallel)
+    # ============================================================
 
-            target_paper=(
-                target_paper
-            ),
+    # Use up to 4 parallel workers.  More workers help when multiple
+    # claims map to different target papers, since FAISS search and
+    # lexical pre-processing are CPU-bound but independent per claim.
+    # NLI inference (torch.no_grad()) is thread-safe for a shared,
+    # eval()-mode model — multiple threads can call forward() safely
+    # because no weights are updated.
+    MAX_WORKERS = min(4, len(claims))
 
-            top_k=max(
+    futures_map = {}  # future -> original claim index
+
+    results_by_index = {}
+
+    with concurrent.futures.ThreadPoolExecutor(
+        max_workers=MAX_WORKERS
+    ) as executor:
+        for idx, claim in enumerate(claims):
+            future = executor.submit(
+                _process_single_claim,
+                claim,
+                bibliography_entries,
+                metadata_dict,
+                faiss_index,
                 top_k,
-                3,
-            ),
-        )
-
-        hallucination_status = (
-            verification_result.get(
-                "hallucination_status",
-                "INSUFFICIENT_EVIDENCE",
             )
-        )
+            futures_map[future] = idx
 
-        hallucination_confidence = (
-            verification_result.get(
-                "hallucination_confidence",
-                0.0,
-            )
-        )
+        for future in concurrent.futures.as_completed(futures_map):
+            idx = futures_map[future]
+            try:
+                result = future.result()
+            except Exception as exc:
+                logger.exception(
+                    "Claim processing failed for index %d: %s",
+                    idx,
+                    exc,
+                )
+                # Produce a safe fallback result so one failed claim
+                # does not abort the whole pipeline.
+                claim = claims[idx]
+                result = {
+                    "claim_id": claim.get("claim_id"),
+                    "claim_text": claim.get("claim_text", ""),
+                    "citation_text": claim.get("citation_text"),
+                    "resolved_reference": None,
+                    "resolved_reference_number": None,
+                    "reference_entry_found": False,
+                    "cited_paper_matched": False,
+                    "citation_link_status": "LINK_NOT_FOUND",
+                    "content_verification_status": "NOT_AVAILABLE",
+                    "hallucination_confidence": 0.0,
+                    "hallucination_reason": f"Claim processing error: {exc}",
+                    "evidence": [],
+                }
+            results_by_index[idx] = result
 
-        hallucination_reason = (
-            verification_result.get(
-                "hallucination_reason",
-                (
-                    "Unable to determine claim "
-                    "verification status."
-                ),
-            )
-        )
-
-        safe_print(
-            "[VERIFY RESULT] "
-            f"{claim_id} -> "
-            f"{hallucination_status} "
-            f"({hallucination_confidence:.4f})"
-        )
-
-        # --------------------------------------------------------
-        # 5F — Deduplicate selected evidence
-        # --------------------------------------------------------
-
-        unique_evidence = (
-            _deduplicate_evidence(
-                selected_evidence
-            )
-        )
-
-        # --------------------------------------------------------
-        # 5G — Layer 1 and Layer 2 evaluation
-        # --------------------------------------------------------
-
-        if reference_entry_found:
-            citation_link_status = "LINK_VALID"
-        else:
-            citation_link_status = "LINK_NOT_FOUND"
-
-        if target_paper:
-            content_verification_status = hallucination_status
-        else:
-            content_verification_status = "NOT_AVAILABLE"
-
-        # --------------------------------------------------------
-        # 5H — Build final claim result
-        # --------------------------------------------------------
-
-        result = {
-            "claim_id":
-                claim_id,
-
-            "claim_text":
-                claim_text,
-
-            "citation_text":
-                citation_text,
-
-            "resolved_reference":
-                resolved_ref.get("ref_text") if resolved_ref else None,
-
-            "resolved_reference_number":
-                resolved_ref.get("ref_num") if resolved_ref else None,
-
-            "reference_entry_found":
-                reference_entry_found,
-
-            "cited_paper_matched":
-                target_paper is not None,
-
-            "citation_link_status":
-                citation_link_status,
-
-            "content_verification_status":
-                content_verification_status,
-
-            "hallucination_confidence":
-                hallucination_confidence,
-
-            "hallucination_reason":
-                hallucination_reason if target_paper else "The actual cited reference paper was not uploaded.",
-
-            "evidence":
-                unique_evidence[
-                    :max(
-                        top_k,
-                        3,
-                    )
-                ],
-        }
-
-        results.append(
-            result
-        )
+    # Restore original claim order.
+    results = [
+        results_by_index[i]
+        for i in range(len(claims))
+        if i in results_by_index
+    ]
 
     # ============================================================
     # STEP 6 — Final response
