@@ -417,3 +417,47 @@ def test_the_masthead_does_not_repeat_the_rail(ingested):
     """Those four links used to sit under the title as well."""
     result, baseline = ingested
     assert "class='elsewhere'" not in render_pipeline(result, baseline)
+
+
+def test_no_page_has_a_dark_theme(ingested):
+    """The theme must not be the demo laptop's to choose.
+
+    A projector's lamp adds light to every pixel, so a dark background
+    arrives on the screen as grey and the contrast the page was
+    measured for is gone. The supervisor saw this happen. Light is the
+    only theme, and `color-scheme: light` says so to the browser as
+    well, which is what keeps the scrollbars and the file picker from
+    coming back dark on a laptop set to dark.
+    """
+    result, baseline = ingested
+    for name, html in (
+        ("home", render_home([])),
+        ("pipeline", render_pipeline(result, baseline)),
+    ):
+        assert "prefers-color-scheme" not in html, f"{name} still follows the OS"
+        assert "color-scheme: light;" in html, f"{name} does not pin the theme"
+
+
+def test_the_planned_chip_is_placed_on_the_grid_not_floated():
+    """It used to say `float: right`, which a grid item ignores.
+
+    The chip took a row of its own and stretched the full width of the
+    card, so "Planned · PP2" read as an empty input box sitting in the
+    middle of the stage. A card is a grid, so the chip is placed in a
+    cell like everything else in it.
+    """
+    css = render_home([])
+    chip = css.split(".step .todo {")[1].split("}")[0]
+    assert "float" not in chip
+    assert "grid-row: 1" in chip and "justify-self: end" in chip
+
+
+def test_the_planned_step_is_not_faded_out_of_readability():
+    """Marked as not built, not made hard to read.
+
+    At 0.72 its body text measured 2.76:1 against the card under a
+    projector — a contrast failure, and in practice an invisible card
+    on the one stage a panel is most likely to ask about. The greyed
+    icon and the chip already carry the meaning.
+    """
+    assert "opacity: 0.72" not in render_home([])

@@ -80,22 +80,23 @@ body { display: flex; flex-direction: column; min-height: 100vh; }
   padding: 11px 4px 2px; font-size: 12.5px; line-height: 1.5; color: var(--ink-soft);
 }
 .preview .mono { color: var(--brand-ink); }
-@media (prefers-color-scheme: dark) {
-  .preview figure { box-shadow: 0 1px 2px rgba(0,0,0,.4), 0 10px 28px rgba(0,0,0,.5); }
-}
+
 
 .drop {
-  margin-top: 26px; position: relative;
+  margin-top: 28px; position: relative;
   border: 1px solid var(--rule-firm); background: var(--sheet);
-  border-radius: var(--r); padding: 20px 22px;
-  display: flex; align-items: center; gap: 18px;
+  border-radius: var(--r); padding: 18px 20px;
+  display: flex; align-items: center; gap: 20px;
 }
 .drop.over { border-color: var(--brand); background: var(--brand-wash); }
 .drop input[type=file] { position: absolute; inset: 0; opacity: 0; cursor: pointer; }
 .drop .cta {
-  flex: 0 0 auto; background: var(--brand); color: #fff;
-  border-radius: 6px; padding: 10px 18px; font-size: 14.5px; font-weight: 600;
+  flex: 0 0 auto; background: var(--brand); color: var(--on-brand);
+  border-radius: 7px; padding: 14px 26px; font-size: 15.5px; font-weight: 600;
+  letter-spacing: -0.005em; white-space: nowrap;
+  box-shadow: 0 1px 2px rgba(10, 79, 62, .3), 0 6px 16px rgba(10, 79, 62, .18);
 }
+.drop:hover .cta { background: var(--brand-ink); color: var(--on-brand); }
 .drop .what { min-width: 0; }
 .drop strong { display: block; font-size: 15px; font-weight: 600; }
 .drop span { display: block; margin-top: 3px; font-size: 13.5px; color: var(--ink-soft); }
@@ -139,18 +140,29 @@ body { display: flex; flex-direction: column; min-height: 100vh; }
    stage cannot reopen it. */
 .steps .step:last-child:nth-child(3n + 1) { grid-column: 1 / -1; }
 .steps .step:last-child:nth-child(3n + 2) { grid-column: span 2; }
-.step .n { font-size: 11.5px; letter-spacing: 0.02em; color: var(--ink-soft); }
-/* the stage that is not built, marked once and not dressed down: it is
-   on the page because the component is eight boxes, not seven */
+.step .n { grid-column: 2; grid-row: 1; justify-self: start;
+           font-size: 11.5px; letter-spacing: 0.02em; color: var(--ink-soft); }
+/* The stage that is not built, marked once and not dressed down: it is
+   on the page because the component is eight boxes, not seven.
+
+   The chip shares the cell with "Step 8" and is pushed to the far end
+   of it. It used to say float: right, which a grid item ignores — so
+   it took a row of its own and stretched the whole width of the card,
+   reading as an empty input box rather than as a label. */
 .step .todo {
-  float: right; font-size: 11px; color: var(--ink-soft);
+  grid-column: 2; grid-row: 1; justify-self: end;
+  font-size: 11px; color: var(--ink-soft);
   border: 1px solid var(--rule-firm); border-radius: 3px; padding: 1px 8px;
 }
 .is-todo { background: var(--paper); }
-.is-todo h3, .is-todo p { opacity: 0.72; }
-.step h3 { grid-column: 2; font-size: 16px; }
-.step p { grid-column: 2; margin-top: 7px; font-size: 13.5px; line-height: 1.55;
-          color: var(--ink-soft); }
+/* The planned step used to be faded to 0.72. On a projector that
+   measured 2.76:1 — a fail, and in practice an invisible card. Its
+   greyed icon and its "Planned · PP2" chip already say it is not
+   built; the words do not also have to be hard to read. Unfaded it
+   measures 5.17:1. */
+.step h3 { grid-column: 2; grid-row: 2; font-size: 16px; }
+.step p { grid-column: 2; grid-row: 3; margin-top: 7px; font-size: 13.5px;
+          line-height: 1.55; color: var(--ink-soft); }
 
 /* The one dark block on the page. The comparison is not a seventh
    stage, it is the reason to believe the other six, so it does not
@@ -161,10 +173,15 @@ body { display: flex; flex-direction: column; min-height: 100vh; }
   align-items: center; justify-content: space-between;
 }
 .verdict h2 { font-size: 23px; }
-.verdict p { margin-top: 10px; max-width: 64ch; font-size: 14.5px; opacity: 0.78; }
+/* 0.88, not the 0.78 this started at. White on the band is 9.54:1 and
+   survives a lit room at 6.53:1; faded to 0.78 the body text fell to
+   4.55:1 there, which is the AA line exactly and no margin at all.
+   0.88 puts it back at 5.40:1. */
+.verdict p { margin-top: 10px; max-width: 64ch; font-size: 14.5px; opacity: 0.88; }
 .verdict .go {
-  flex: 0 0 auto; color: inherit; text-decoration: none;
-  border: 1px solid currentColor; border-radius: 6px; padding: 10px 20px; font-size: 14.5px;
+  flex: 0 0 auto; color: inherit; text-decoration: none; font-weight: 600;
+  border: 1px solid currentColor; border-radius: 7px;
+  padding: 14px 26px; font-size: 15.5px; white-space: nowrap;
 }
 .verdict .go:hover { background: #fff; color: var(--brand-deep); }
 
@@ -231,8 +248,12 @@ async function send(file) {
   }
   fail.textContent = '';
   zone.classList.add('busy');
-  zone.querySelector('strong').textContent = 'Reading ' + file.name;
-  zone.querySelector('span').textContent = 'Rendering pages, finding regions, cutting chunks.';
+  /* `.what strong` and `.what span`, not `strong` and `span`: the first
+     span in this panel is the button, and writing the status line into
+     it replaced the label with a sentence. */
+  zone.querySelector('.cta').textContent = 'Reading\u2026';
+  zone.querySelector('.what strong').textContent = file.name;
+  zone.querySelector('.what span').textContent = 'Rendering pages, finding regions, cutting chunks.';
   zone.querySelector('.pulse').hidden = false;
 
   const body = new FormData();
@@ -253,8 +274,10 @@ async function send(file) {
 function show(message) {
   zone.classList.remove('busy');
   zone.querySelector('.pulse').hidden = true;
-  zone.querySelector('strong').textContent = 'Drop a paper here';
-  zone.querySelector('span').textContent = 'or click to choose a PDF';
+  zone.querySelector('.cta').textContent = 'Choose a PDF';
+  zone.querySelector('.what strong').textContent = 'Drop a paper here';
+  zone.querySelector('.what span').textContent =
+    'Any reference PDF. Nothing leaves this machine.';
   fail.textContent = message;
   input.value = '';
 }

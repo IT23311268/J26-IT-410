@@ -32,16 +32,14 @@ numbers came out of the pipeline and which are English.
 
 from __future__ import annotations
 
-#: Dark is a media query, not a toggle: a demo should match whatever
-#: the room's laptop is already set to without anyone touching a
-#: switch.
+#: One theme. See the note in BASE_CSS for why there is no dark one.
 #:
 #: The greys are neutral rather than warm. A warm off-white reads as
 #: stationery, and these pages are closer to an instrument's readout
 #: than to a letter.
 TOKENS = """
 :root {
-  color-scheme: light dark;
+  color-scheme: light;
   --paper:    #f1f2f0;
   --sheet:    #ffffff;
   --ink:      #16181a;
@@ -52,30 +50,39 @@ TOKENS = """
   --brand-ink:  #0a5f4a;
   --brand-wash: #e6f2ed;
   --brand-deep: #0a4f3e;
+  --on-brand:   #ffffff;
   --red:      #9c2b2b;
   --shade:    #f5f6f4;
   --series-baseline: #b8641a;
   --series-ours:     #1b4f9c;
   --r: 8px;
+
+  /* The group's shared masthead, taken from Member 2's surface so the
+     four components read as one system at the review.
+
+     It is a band and nothing else. The measurement colours stay where
+     they are: a colour that sits beside a bar has to clear that bar,
+     and this one is only ever at the top of the page, where it never
+     shares a sightline with one. It clears them anyway — ΔE 20.2 from
+     --series-ours and 38.3 from --series-baseline.
+
+     White on it measures 15.89:1, and 8.81:1 with the room lights on.
+
+     It started as the gradient Member 2's surface uses. Flat #16213e
+     sits 0.5 ΔE from that gradient's midpoint — no visible difference
+     — so the gradient bought nothing and this is the value the group
+     agreed on. */
+  --band: #16213e;
 }
-@media (prefers-color-scheme: dark) {
-  :root {
-    --paper:    #101316;
-    --sheet:    #181c20;
-    --ink:      #e8ebee;
-    --ink-soft: #969ca3;
-    --rule:     #262b30;
-    --rule-firm:#3a4046;
-    --brand:      #4cc39b;
-    --brand-ink:  #6fd3b1;
-    --brand-wash: #14302a;
-    --brand-deep: #0b3b30;
-    --red:      #e58b8b;
-    --shade:    #14181b;
-    --series-baseline: #c0832c;
-    --series-ours:     #5e8ed6;
-  }
-}
+/* There is no dark theme, on purpose.
+
+   It followed the laptop's own setting, which means the demo machine
+   decides. A dark page is washed out by a projector — the lamp adds
+   light, so a dark background comes out grey and the contrast the
+   design was measured for is gone. The supervisor saw this and said
+   so.
+
+   Light is the only theme now. It is the one that survives the room. */
 """
 
 #: Three colours, and each one means a different kind of thing.
@@ -85,8 +92,8 @@ TOKENS = """
 #:
 #: --series-baseline and --series-ours are the comparison, and nothing
 #: else: amber against blue, two identities rather than a verdict.
-#: ΔE 24.5 under protanopia and 23.3 in dark mode, all six checks
-#: passing in both — which is why the brand colour had to be chosen
+#: ΔE 24.5 apart under protanopia, and passing under deuteranopia and
+#: tritanopia too — which is why the brand colour had to be chosen
 #: around them rather than the other way about.
 #:
 #: Measured against that pair, #0d7a5f comes back at ΔE 18.5 from the
@@ -253,6 +260,26 @@ p  { margin: 0; max-width: 68ch; }
 
 @media (prefers-reduced-motion: reduce) {
   * { animation: none !important; transition: none !important; scroll-behavior: auto !important; }
+}
+
+/* The group's masthead. One band, shared by all four components, so a
+   panel moving between four laptops sees one system rather than four
+   student projects. See the note beside --band for why it is only
+   ever a band and never an accent. */
+.topband {
+  background: var(--band);
+  color: #ffffff;
+  padding: 18px 24px 17px;
+}
+.topband .inner { max-width: 1140px; margin: 0 auto; }
+.topband h1 { font-size: 18px; letter-spacing: -0.008em; }
+.topband p {
+  margin: 4px 0 0; font-size: 12.5px; color: #aeb6d2;
+}
+.topband .mono { color: #aab2cd; }
+@media (max-width: 720px) {
+  .topband { padding: 14px 16px 13px; }
+  .topband h1 { font-size: 16px; }
 }
 """
 

@@ -13,6 +13,16 @@ data/processed/*
 !data/processed/.gitkeep
 *.pdf
 
+# Node — the React client's dependencies.
+#
+# Its BUILD OUTPUT, api/static/app/, is deliberately NOT ignored. That
+# is what lets the demo machine serve /app with neither Node nor a
+# network: `cd web && npm run build` runs on a development machine and
+# the result is committed. Ignoring it would mean every clone — and
+# the laptop plugged into the projector — needs an npm install first.
+web/node_modules/
+npm-debug.log*
+
 # Secrets / env
 .env
 *.key

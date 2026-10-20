@@ -1,0 +1,23 @@
+RESEARCH ASSISTANT - REFERENCE UI REDESIGN
+
+Only file changed: api/pipeline.py
+- Navy #16213e full-width top bar and Research Assistant identity
+- Left sidebar beneath the header, linked to existing endpoints
+- KPI strip with REAL dynamic metrics
+- Compact Document Information with REAL PDF metadata
+- Stage cards with original data, previews, references, and zoom
+- Page previews and region previews in responsive columns
+
+Every backend algorithm, input/output schema, API route, and extraction metric is left unchanged.
+Original source ZIP does not include the ingestion/ and schema/ modules, so use these files
+only to update an ALREADY WORKING copy of your project. Do not overwrite entire project.
+
+INSTALL
+1. Back up your existing api/pipeline.py.
+2. Extract update-only ZIP.
+3. Replace YOUR_PROJECT/api/pipeline.py with the included api/pipeline.py.
+4. Restart local server; refresh pipeline page with Ctrl+Shift+R.
+5. Visit /pipeline/{paper_id}. The home and React views have not been redesigned.
+
+Note: Top navigation only links to existing routes: Home, All Papers, API Docs.
+No fictional History/Settings functionality has been added.

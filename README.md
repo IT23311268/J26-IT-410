@@ -78,7 +78,13 @@ output) all build against.
   is linked from the footer.
 - `api/ui.py` — the palette and base styles the three HTML surfaces
   share. No web fonts and no CDN: these pages are opened from localhost
-  on a laptop plugged into a projector.
+  on a laptop plugged into a projector. One theme, light. A projector's
+  lamp adds light to every pixel, so a dark background arrives grey and
+  the contrast the palette was measured for is gone.
+- `web/` — **the same walkthrough as a React client**, served at
+  `/app`. It reads `GET /paper/{id}/walkthrough`, which returns the
+  result and a freshly re-run baseline in one response. See
+  "Two front ends" below.
 - `scripts/check_corpus.py` — runs Box 3 over a folder of papers and
   prints the pages that look wrong. Every threshold in `layout.py` was
   measured on one or two real pages, which is the honest way to pick a
@@ -155,6 +161,52 @@ The individual views, with a `paper_id` from
 
 A `paper_id` derived from a filename with spaces must be percent-encoded
 in the URL (`Linked%20Lists`). The gallery does this for you.
+
+## Two front ends
+
+There are two walkthroughs and both work:
+
+| | |
+|---|---|
+| `http://127.0.0.1:8000/pipeline/{paper_id}` | server-rendered, Python |
+| `http://127.0.0.1:8000/app/?paper={paper_id}` | React |
+
+They show the same stages from the same data. Keeping both is
+deliberate. The server-rendered one has no build step and cannot fail
+at a presentation; the React one is what the group builds on from here.
+Neither is deleted until the React view has been presented once and
+survived it.
+
+The React client is the only thing that uses
+`GET /paper/{id}/walkthrough`, which returns the stored result plus a
+freshly re-run baseline in one response. The baseline is re-run rather
+than stored for the same reason `/pipeline` and `/compare` re-run it —
+a stored copy would quietly flatter us as the baseline changed.
+
+**The built client is committed**, in `api/static/app/`. That is what
+lets the demo machine serve `/app` with neither Node nor a network.
+Only rebuild it after changing something under `web/src/`:
+
+```bash
+cd web
+npm install        # once
+npm run build      # writes api/static/app/
+```
+
+Commit the contents of `api/static/app/` along with the source change,
+or the deployed page and the source drift apart.
+
+To work on it with hot reload, run uvicorn on 8000 and Vite beside it.
+Vite proxies `/paper`, `/papers`, `/ingest` and `/health` to uvicorn, so
+both halves are the same origin and no CORS rule is needed:
+
+```bash
+cd web && npm run dev     # http://127.0.0.1:5173/
+```
+
+The 60-odd tests that assert on rendered HTML cover the Python pages
+and are untouched by any of this. `tests/test_api.py` covers the
+walkthrough endpoint and the `/app` mount.
 
 ## Generate a test PDF and ingest it manually
 
