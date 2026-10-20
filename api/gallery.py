@@ -19,7 +19,7 @@ from schema.ingestion_schema_v1 import IngestionResult
 
 _STYLES = """
 :root {
-  color-scheme: light dark;
+  color-scheme: light;
   --bg: #f6f7f9;
   --surface: #ffffff;
   --border: #d8dce3;
@@ -27,16 +27,7 @@ _STYLES = """
   --muted: #5b6472;
   --accent: #1f3f8f;
 }
-@media (prefers-color-scheme: dark) {
-  :root {
-    --bg: #0f1216;
-    --surface: #171c23;
-    --border: #2a323d;
-    --text: #e8ecf1;
-    --muted: #93a0b1;
-    --accent: #8fb0ff;
-  }
-}
+
 * { box-sizing: border-box; }
 body {
   margin: 0;

@@ -32,16 +32,14 @@ numbers came out of the pipeline and which are English.
 
 from __future__ import annotations
 
-#: Dark is a media query, not a toggle: a demo should match whatever
-#: the room's laptop is already set to without anyone touching a
-#: switch.
+#: One theme. See the note in BASE_CSS for why there is no dark one.
 #:
 #: The greys are neutral rather than warm. A warm off-white reads as
 #: stationery, and these pages are closer to an instrument's readout
 #: than to a letter.
 TOKENS = """
 :root {
-  color-scheme: light dark;
+  color-scheme: light;
   --paper:    #f1f2f0;
   --sheet:    #ffffff;
   --ink:      #16181a;
@@ -52,30 +50,22 @@ TOKENS = """
   --brand-ink:  #0a5f4a;
   --brand-wash: #e6f2ed;
   --brand-deep: #0a4f3e;
+  --on-brand:   #ffffff;
   --red:      #9c2b2b;
   --shade:    #f5f6f4;
   --series-baseline: #b8641a;
   --series-ours:     #1b4f9c;
   --r: 8px;
 }
-@media (prefers-color-scheme: dark) {
-  :root {
-    --paper:    #101316;
-    --sheet:    #181c20;
-    --ink:      #e8ebee;
-    --ink-soft: #969ca3;
-    --rule:     #262b30;
-    --rule-firm:#3a4046;
-    --brand:      #4cc39b;
-    --brand-ink:  #6fd3b1;
-    --brand-wash: #14302a;
-    --brand-deep: #0b3b30;
-    --red:      #e58b8b;
-    --shade:    #14181b;
-    --series-baseline: #c0832c;
-    --series-ours:     #5e8ed6;
-  }
-}
+/* There is no dark theme, on purpose.
+
+   It followed the laptop's own setting, which means the demo machine
+   decides. A dark page is washed out by a projector — the lamp adds
+   light, so a dark background comes out grey and the contrast the
+   design was measured for is gone. The supervisor saw this and said
+   so.
+
+   Light is the only theme now. It is the one that survives the room. */
 """
 
 #: Three colours, and each one means a different kind of thing.
@@ -85,8 +75,8 @@ TOKENS = """
 #:
 #: --series-baseline and --series-ours are the comparison, and nothing
 #: else: amber against blue, two identities rather than a verdict.
-#: ΔE 24.5 under protanopia and 23.3 in dark mode, all six checks
-#: passing in both — which is why the brand colour had to be chosen
+#: ΔE 24.5 apart under protanopia, and passing under deuteranopia and
+#: tritanopia too — which is why the brand colour had to be chosen
 #: around them rather than the other way about.
 #:
 #: Measured against that pair, #0d7a5f comes back at ΔE 18.5 from the

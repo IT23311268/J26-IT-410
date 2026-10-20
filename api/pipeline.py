@@ -73,32 +73,85 @@ _CSS = BASE_CSS + """
    the sheet's particulars ruled off on the right, and the result
    across the foot of it. It used to be four stacked bands of equal
    weight, which is a list of facts rather than a composition. */
+/* Pipeline-page-only visual redesign. The shared api/ui.py is
+   untouched, so the other three surfaces keep what they had. */
+.brand { background: #16213e; border-bottom-color: #16213e; }
+.brand b { color: #ffffff; }
+.brand span { color: #d2dbee; }
+
 .masthead {
-  border-bottom: 1px solid var(--rule);
-  background: var(--sheet);
-  padding: 52px 24px 0;
+  border-bottom: 1px solid #e2e8f0;
+  background: #f7f9fc;
+  padding: 36px 28px 0;
 }
-.masthead .inner { max-width: 1140px; margin: 0 auto; }
+.masthead .inner { max-width: 1240px; margin: 0 auto; }
+
+/* Title left, the card right. Stacking them left a column of empty
+   page down the middle of the screen. */
 .titleblock {
-  display: grid; grid-template-columns: minmax(0, 1fr) auto;
-  gap: 20px 64px; align-items: start;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(280px, 370px);
+  gap: 24px 36px;
+  align-items: start;
 }
-.masthead h1 { max-width: 20ch; }
+.titleblock > div { min-width: 0; }
+.masthead h1 { max-width: 24ch; color: #16213e; }
 .standfirst {
-  margin-top: 14px; color: var(--ink-soft);
+  margin-top: 14px; color: #52627c;
   font-size: 16px; max-width: 46ch;
 }
 
-/* label and value on one line each, the values aligned down a column
-   the way a drawing's particulars are */
-.facts {
-  display: grid; grid-template-columns: auto auto; gap: 5px 20px;
-  margin: 6px 0 0; padding: 2px 0 2px 22px;
-  border-left: 1px solid var(--rule);
-  font-size: 13px;
+/* A real information card replaces the old unboxed, left-ruled
+   definition list, which floated with nothing holding it. */
+.document-card {
+  min-width: 0;
+  width: 100%;
+  background: #ffffff;
+  border: 1px solid #e2e8f0;
+  border-radius: 14px;
+  padding: 20px 22px;
+  box-shadow: 0 4px 18px rgba(22, 33, 62, 0.065);
 }
-.facts dt { color: var(--ink-soft); }
-.facts dd { margin: 0; }
+.document-card__heading {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 16px;
+}
+.document-card__icon {
+  flex: 0 0 auto;
+  width: 38px;
+  height: 38px;
+  display: grid;
+  place-items: center;
+  color: #087f5b;
+  background: #e4f4ee;
+  border-radius: 10px;
+}
+.document-card__icon svg {
+  stroke: currentColor; fill: none; stroke-width: 1.5;
+  stroke-linecap: round; stroke-linejoin: round;
+}
+.document-card__heading h2 {
+  color: #16213e;
+  font-size: 16px;
+  line-height: 1.35;
+  font-weight: 650;
+}
+
+/* label and value, the values aligned down a column the way a
+   drawing's particulars are.
+
+   #52627c for the labels, not a lighter slate: it measures 5.86:1 on
+   this card and 4.59:1 once a projector lamp lifts the black, which
+   is the surface this page is actually read from. */
+.facts {
+  display: grid; grid-template-columns: auto minmax(0, 1fr);
+  gap: 9px 16px; margin: 0; padding: 0;
+  font-size: 13px; align-items: baseline;
+}
+.facts dt { color: #52627c; }
+.facts dd { margin: 0; color: #16213e; overflow-wrap: anywhere; }
 
 .elsewhere {
   display: flex; flex-wrap: wrap; gap: 22px;
@@ -108,9 +161,8 @@ _CSS = BASE_CSS + """
 .elsewhere a:hover { color: var(--ink); text-decoration: underline; }
 
 @media (max-width: 820px) {
-  .titleblock { grid-template-columns: 1fr; gap: 20px; }
-  .facts { padding-left: 0; border-left: 0; justify-content: start; }
-  .masthead { padding-top: 36px; }
+  .titleblock { grid-template-columns: minmax(0, 1fr); gap: 20px; }
+  .masthead { padding: 26px 18px 0; }
   .masthead h1 { font-size: 30px; }
 }
 
@@ -168,15 +220,20 @@ _CSS = BASE_CSS + """
    picture in it and no way home. This never leaves the page. */
 .zoom {
   position: fixed; inset: 0; z-index: 50;
-  background: rgba(10, 12, 15, 0.88);
-  display: flex; align-items: center; justify-content: center;
-  padding: 56px 24px 24px;
+  background: rgba(10, 12, 15, 0.9);
+  display: flex; align-items: flex-start; justify-content: center;
+  padding: 56px 20px 48px; overflow: auto; overscroll-behavior: contain;
 }
 .zoom[hidden] { display: none; }
+/* Fitted to the WIDTH, not the height. A paper page is tall, so
+   fitting it inside the viewport shrank the type to the size it was
+   on the thumbnail — which is the one thing the full-size view exists
+   to undo. It is readable now, and you scroll down the page. */
 .zoom img {
-  max-width: 100%; max-height: 100%;
-  object-fit: contain; background: #fff; box-shadow: 0 2px 40px rgba(0,0,0,.5);
+  width: min(1080px, 94vw); max-width: none; max-height: none; height: auto;
+  background: #fff; box-shadow: 0 2px 40px rgba(0,0,0,.55);
 }
+.zoom .shut { position: fixed; }
 .zoom .shut {
   position: absolute; top: 14px; right: 18px;
   background: none; border: 1px solid rgba(255,255,255,.45); border-radius: 4px;
@@ -381,6 +438,269 @@ _CSS = BASE_CSS + """
   .lede, .out { margin-left: 0; }
   .overlay { grid-template-columns: 1fr; }
   .scores { grid-template-columns: repeat(2, 1fr); }
+}
+
+/* ================================================================
+   RESEARCH ASSISTANT · PIPELINE PRESENTATION LAYER
+   Pure CSS for this server-rendered route. Nothing in the ingestion
+   engine, stored results, comparison calculations, or API is changed.
+   ================================================================ */
+:root {
+  --dashboard-navy: #16213e;
+  --dashboard-bg: #f6f8fc;
+  --dashboard-blue: #1768ce;
+  --dashboard-line: #e2e8f0;
+  --dashboard-green: #087f5b;
+  --dashboard-shadow: 0 8px 28px rgba(22, 33, 62, 0.055), 0 2px 6px rgba(22,33,62,.025);
+  --paper: var(--dashboard-bg);
+  --shade: #f7f9fd;
+  --rule: var(--dashboard-line);
+  --r: 14px;
+}
+body { padding-left: 248px; color: #18213a; background: var(--dashboard-bg); }
+/* The shared navigation remains unchanged; style it only on /pipeline. */
+.apprail {
+  width: 248px; padding: 22px 13px 18px;
+  background: #fff; border-right: 1px solid var(--dashboard-line);
+  box-shadow: 2px 0 16px rgba(22,33,62,.018);
+}
+.apprail .top {
+  padding: 6px 10px 24px; gap: 11px; color: var(--dashboard-navy);
+  border-bottom: 1px solid #edf1f7; margin-bottom: 14px;
+}
+.apprail .top svg { color: var(--dashboard-green); width: 26px; height: 26px; }
+.apprail .top b { font-size: 15px; letter-spacing: -.025em; }
+.apprail a { border-radius: 9px; padding: 10px 12px; gap: 11px; font-size: 13.5px; }
+.apprail a:hover { background: #f2f6fc; color: var(--dashboard-navy); }
+.apprail a[aria-current="page"] {
+  background: #e7f4ee; color: #087152; font-weight: 650;
+}
+.apprail .nest { margin-left: 23px; padding-left: 12px; border-left-color: #e7edf4; }
+.apprail .foot { border-top-color: #e8edf5; }
+.rail a { border-left-width: 2px; border-radius: 0 7px 7px 0; padding: 7px 8px 7px 11px; }
+.rail a:hover { background: #f2f6fc; color: #16213e; }
+.rail a[aria-current="true"] {
+  background: #edf7f3; color: var(--dashboard-green);
+  border-left-color: var(--dashboard-green);
+}
+.rail a[aria-current="true"] .n { color: var(--dashboard-green); }
+/* Exact requested header color. */
+.brand {
+  background: #16213e; color: #fff; border-bottom: 1px solid #16213e;
+  padding: 17px 32px;
+}
+.brand .inner { max-width: 1380px; align-items: center; }
+.brand b { color: #fff; font-size: 16px; font-weight: 650; letter-spacing: -.025em; }
+.brand span { color: #c9d4ea; font-size: 12px; }
+.masthead {
+  background: linear-gradient(180deg,#fbfcff 0%,#f6f8fc 100%);
+  border-bottom: 0; padding: 34px 32px 20px;
+}
+.masthead .inner { max-width: 1380px; }
+.titleblock {
+  display: grid; grid-template-columns: minmax(0,1fr) minmax(285px,355px);
+  gap: 30px 34px; align-items: center; margin-bottom: 26px;
+}
+.titleblock > div { min-width: 0; }
+.masthead h1 {
+  font-size: clamp(30px, 3.1vw, 44px); line-height: 1.14;
+  color: var(--dashboard-navy); font-weight: 740;
+  letter-spacing: -.035em; max-width: 30ch;
+  overflow-wrap: anywhere;
+}
+.standfirst {
+  margin-top: 13px; font-size: 15px; line-height: 1.65;
+  color: #596a81; max-width: 53ch;
+}
+.document-card {
+  position: relative; background: #fff;
+  border: 1px solid #e1e9f3; border-radius: 16px;
+  box-shadow: var(--dashboard-shadow);
+  padding: 19px 20px 20px; max-width: 100%; min-width: 0;
+}
+.document-card__heading { gap: 11px; margin-bottom: 15px; }
+.document-card__heading h2 { font-size: 16px; font-weight: 700; color: #16213e; }
+.document-card__icon {
+  width: 38px; height: 38px; border-radius: 11px;
+  background: #e7f4ee; color: #087f5b;
+}
+.facts {
+  display: grid; grid-template-columns: 62px minmax(0,1fr);
+  align-items: baseline; column-gap: 13px; row-gap: 10px;
+  margin: 0; padding: 0; font-size: 12.5px; line-height: 1.55;
+}
+.facts dt { color: #687990; font-weight: 500; }
+.facts dd { color: var(--dashboard-navy); min-width: 0; max-width: none; overflow-wrap: anywhere; }
+/* Measured output is legible at a glance, without a full-width grey rule. */
+.headline {
+  display: grid; grid-template-columns: repeat(6, minmax(0, 1fr));
+  gap: 10px; margin-top: 0; border: 0;
+}
+.headline > div {
+  min-width: 0; background: #fff; border: 1px solid var(--dashboard-line);
+  border-radius: 13px; padding: 18px 15px 19px;
+  box-shadow: 0 2px 8px rgba(22,33,62,.022);
+  display: flex; flex-direction: column; justify-content: center;
+  gap: 0;
+}
+.headline > div + div { padding-left: 15px; border-left: 1px solid var(--dashboard-line); }
+.headline b {
+  display: block; color: #16213e; font-size: clamp(23px,2.45vw,34px);
+  line-height: 1.1; letter-spacing: -.04em; font-weight: 720;
+  overflow-wrap: anywhere;
+}
+.headline span { display: block; margin-top: 9px; font-size: 12px; color: #617187; line-height: 1.45; }
+.headline .good b { color: #1768ce; }
+.headline .plain b { color: #64748b; font-weight: 620; }
+/* A clear heading separates the overview from the walkthrough. */
+.workflow-head {
+  display: flex; justify-content: space-between; align-items: end;
+  gap: 12px; margin: 3px 0 20px;
+}
+.workflow-head h2 { font-size: 23px; letter-spacing: -.025em; color: #16213e; }
+.workflow-head p { margin-top: 6px; font-size: 13px; color: #69798e; }
+.workflow-head .count {
+  flex: 0 0 auto; border: 1px solid #d8e7f8; background: #eff6ff;
+  color: #1c63b1; border-radius: 999px; font-size: 12px;
+  font-weight: 650; padding: 6px 12px;
+}
+.layout { max-width: 1444px; padding: 20px 32px 90px; }
+.stage {
+  background: #fff; border: 1px solid #e2e9f2;
+  border-radius: 16px; padding: 26px 30px 30px;
+  box-shadow: var(--dashboard-shadow);
+  scroll-margin-top: 18px;
+}
+.stage + .stage { margin-top: 16px; }
+.stage header { display: flex; align-items: center; gap: 16px; }
+.stage .no {
+  flex: 0 0 auto; display: grid; place-items: center;
+  min-width: 42px; width: 42px; height: 42px;
+  border-radius: 11px; background: #e5f4ee;
+  color: #087f5b; font-size: 18px; font-weight: 730; line-height: 1;
+}
+.stage header h2 { font-size: 23px; letter-spacing: -.026em; color: #16213e; }
+.stage .lede {
+  margin: 9px 0 0; max-width: 77ch;
+  color: #62718a; font-size: 14px; line-height: 1.65;
+}
+.stage .out { margin: 20px 0 0 58px; }
+.stage .sheet, .stage .chunk, .stage .crops figure, .stage .run span {
+  background: #f9fbff; border-color: #e4eaf3;
+}
+.sheet, .chunk, .crops figure, .run span { border-radius: 10px; }
+.filerow {
+  align-items: center; gap: 12px 26px; padding: 17px 20px;
+  border: 1px solid #e2e9f3; border-radius: 11px;
+  background: #f9fbff;
+}
+.filerow b { color: #16213e; overflow-wrap: anywhere; }
+.filerow span { color: #617187; }
+.strip img { border-radius: 8px; }
+.strip a:hover img { border-color: #1768ce; box-shadow: 0 3px 12px rgba(23,104,206,.1); }
+.overlay { grid-template-columns: minmax(0,1fr) 205px; gap: 22px; }
+.tally { border-top: 0; }
+.tally li { padding: 9px 0; }
+.tally b { color: #16213e; }
+.claim {
+  border-left: 3px solid #1768ce; padding: 10px 15px;
+  background: #f2f7ff; border-radius: 0 9px 9px 0;
+  color: #334967; font-size: 14.5px;
+}
+.scores { border-radius: 11px; }
+.scores div { background: #f9fbff; }
+.scores .win b { color: #1768ce; }
+.readout b { color: #16213e; }
+.chunk { background: #fafcff; padding: 17px 19px; }
+.chunk .sect { background: #fff; border-radius: 6px; }
+.crops figure { background: #fafcff; overflow: hidden; }
+.link { background: #fafcff; }
+.link mark.ref { background: #e7f1ff; color: #155caf; border-radius: 4px; }
+#ev { border-top: 1px solid #e2e9f2; margin-top: 26px; }
+.measure h3 { color: #16213e; }
+.measure, .side { background: #fafcff; }
+.bar .track { border-radius: 999px; overflow: hidden; }
+.note { color: #66768d; }
+/* Responsive: long filenames cannot force horizontal scrolling. */
+@media (max-width: 1480px) {
+  .headline { grid-template-columns: repeat(3, minmax(0,1fr)); }
+}
+@media (max-width: 1120px) {
+  .titleblock { grid-template-columns: minmax(0,1fr); }
+  .document-card { max-width: 540px; }
+  .masthead { padding: 30px 24px 18px; }
+  .layout { padding: 18px 24px 70px; }
+}
+@media (max-width: 900px) {
+  body { padding-left: 0; }
+  .apprail { position: static; width: 100%; padding: 10px 15px; box-shadow: none; }
+  .apprail .top { margin-bottom: 0; padding-bottom: 9px; border-bottom: 0; }
+  .brand { padding: 14px 18px; }
+  .brand .inner { align-items: center; }
+  .masthead { padding: 25px 18px 18px; }
+  .layout { padding: 18px 18px 64px; }
+  .stage { padding: 24px 20px; }
+  .stage .lede, .stage .out { margin-left: 0; }
+  .headline { grid-template-columns: repeat(3,minmax(0,1fr)); }
+  .overlay { grid-template-columns: minmax(0,1fr); }
+}
+@media (max-width: 600px) {
+  .brand .inner { align-items: start; flex-direction: column; gap: 4px; }
+  .masthead h1 { font-size: 30px; }
+  .headline { grid-template-columns: repeat(2,minmax(0,1fr)); gap: 8px; }
+  .headline > div { padding: 14px 13px; }
+  .headline > div + div { padding-left: 13px; }
+  .headline b { font-size: 25px; }
+  .workflow-head { align-items: start; flex-direction: column; }
+  .document-card { padding: 17px 16px; }
+  .stage header { align-items: start; gap: 12px; }
+  .stage header h2 { font-size: 20px; }
+  .stage .no { width: 36px; height: 36px; min-width: 36px; }
+  .scores { grid-template-columns: repeat(2,minmax(0,1fr)); }
+  .bar { grid-template-columns: 88px minmax(0,1fr) 46px; gap: 7px; }
+  .filerow { padding: 13px 14px; }
+}
+
+/* Requested finishing touches: typography and two balanced header cards.
+   Presentation-only; the report title and metadata remain dynamically bound. */
+.brand { padding-top: 20px; padding-bottom: 20px; }
+.brand b {
+  font-size: 21px;
+  font-weight: 740;
+  line-height: 1.25;
+  letter-spacing: -.025em;
+}
+.masthead { padding-top: 28px; }
+.titleblock { align-items: stretch; gap: 20px; }
+.titleblock > div:first-child {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  min-height: 225px;
+  padding: 25px 29px;
+  background: #fff;
+  border: 1px solid #e1e9f3;
+  border-left: 4px solid #1768ce;
+  border-radius: 16px;
+  box-shadow: var(--dashboard-shadow);
+}
+.masthead h1 {
+  font-size: clamp(25px, 2.25vw, 30px);
+  line-height: 1.24;
+  max-width: none;
+  letter-spacing: -.027em;
+}
+.standfirst { max-width: 58ch; margin-top: 11px; font-size: 14px; }
+.document-card { height: 100%; }
+@media (max-width: 1120px) {
+  .titleblock { grid-template-columns: minmax(0, 1fr); }
+  .titleblock > div:first-child { min-height: auto; padding: 23px 25px; }
+  .document-card { max-width: none; }
+}
+@media (max-width: 600px) {
+  .brand b { font-size: 18px; }
+  .masthead h1 { font-size: 25px; }
+  .titleblock > div:first-child { padding: 20px; }
 }
 """
 
@@ -1008,18 +1328,34 @@ def render_pipeline(
         f"<title>{_e(title)} — ingestion pipeline</title>"
         f"<style>{_CSS}</style></head><body>"
         f"{app_rail('pipeline', paper.paper_id, nested=stage_rail)}"
+        # The engine's name sits in the brand strip this page already
+        # had; restyling it beats adding a second band above it. The
+        # paper's own name goes on white beside its particulars, so the
+        # two fill one row instead of leaving a column of empty page.
         f"{BRAND}"
         f"<header class='masthead'><div class='inner'>"
         f"<div class='titleblock'><div><h1>{_e(title)}</h1>"
-        "<p class='standfirst'>Every stage, in the order it runs, with what "
-        "each one produced from this paper.</p></div>"
-        f"<dl class='facts'>{facts}</dl></div>"
+        "<p class='standfirst'>Every stage, in the order it runs, with "
+        "what each one produced from this paper.</p></div>"
+        "<section class='document-card' aria-labelledby='doccard'>"
+        "<div class='document-card__heading'>"
+        "<span class='document-card__icon' aria-hidden='true'>"
+        "<svg width='20' height='20' viewBox='0 0 20 20'>"
+        "<path d='M11.5 2.5H6a1.5 1.5 0 0 0-1.5 1.5v12A1.5 1.5 0 0 0 6 17.5h8a1.5 "
+        "1.5 0 0 0 1.5-1.5V6.5z'/><path d='M11.5 2.5v4h4'/>"
+        "<path d='M7.5 10.5h5M7.5 13.5h3'/></svg></span>"
+        "<h2 id='doccard'>Document Information</h2></div>"
+        f"<dl class='facts'>{facts}</dl></section></div>"
         # The row of links that used to sit here — all papers, raw JSON,
         # gallery, comparison — is the app rail now, and printing both
         # was the same four destinations twice on one screen.
         f"{_headline(result, baseline)}"
         "</div></header>"
-        f"<div class='layout'><main>{''.join(bodies)}</main></div>"
+        f"<div class='layout'><div class='workflow-head'>"
+        "<div><h2>Pipeline walkthrough</h2>"
+        "<p>Follow the paper from upload to structured, linked research content.</p></div>"
+        "<span class='count'>7 processing stages</span></div>"
+        f"<main>{''.join(bodies)}</main></div>"
         # the full-size view, which replaces opening a raw image in a
         # tab of its own with nothing in it to come back by
         "<div class='zoom' hidden role='dialog' aria-modal='true' aria-label='Full size'>"
