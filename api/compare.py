@@ -46,9 +46,13 @@ _STYLES = TOKENS + """
   --border: var(--rule);
   --text: var(--ink);
   --muted: var(--ink-soft);
-  --accent: var(--blue);
+  /* --blue and --green were never defined in TOKENS, so --accent and
+     --good resolved to nothing and every .tag.known fell back to the
+     grey it inherits from .meta. That is why the section labels on
+     this page were all one colour. Point them at tokens that exist. */
+  --accent: var(--series-ours);
   --bad: var(--red);
-  --good: var(--green);
+  --good: var(--brand-ink);
 }
 * { box-sizing: border-box; }
 body {
@@ -76,8 +80,48 @@ h1 { font-size: 22px; margin: 0 0 4px; }
   font-size: 11px; padding: 2px 7px; border-radius: 999px;
   border: 1px solid currentColor;
 }
-.tag.unknown { color: var(--bad); }
-.tag.known { color: var(--good); }
+/* UNKNOWN is the failure this page exists to show, so it is the one
+   filled chip: white on #9c2b2b, 7.52:1 and 5.56:1 with the room
+   lights on. Every baseline chunk carries it, so the left column
+   reads as a column of red at a glance from the back of the room. */
+.tag.unknown {
+  color: #ffffff; background: var(--bad); border-color: var(--bad);
+}
+
+/* One hue per section, so the right column reads as a paper with
+   parts rather than a list of grey boxes.
+
+   Two numbers were solved rather than chosen.
+
+   The lightness of each ink, per hue, against 5:1 on that chip's own
+   wash with the projector's black floor added. A flat lightness
+   passes in the blues and fails in the greens, because green is far
+   lighter than blue at the same number — five of ten chips failed
+   that way on the first pass.
+
+   And the hues themselves. Spacing them evenly round the wheel looks
+   even and is not: OKLab is crowded in the greens, and evenly spaced
+   hues put introduction and method ΔE 4.3 apart, which is a guess at
+   arm's length. These ten were searched for the set whose CLOSEST
+   pair is furthest apart — ΔE 8.2 — and then ordered so the paper
+   runs cool at the front, warm through the middle and violet at the
+   back.
+
+   Colour is still only ever reinforcement here: the chip prints the
+   word too, so nothing is lost by anyone who cannot separate two of
+   them. */
+.tag.known { color: var(--good); background: var(--brand-wash); }
+.tag.s-title        { color: #294aa6; background: #e8edfa; }
+.tag.s-abstract     { color: #20587e; background: #e8f3fa; }
+.tag.s-introduction { color: #196256; background: #e8faf7; }
+.tag.s-method       { color: #196419; background: #e8fae8; }
+.tag.s-results      { color: #615918; background: #faf8e8; }
+.tag.s-discussion   { color: #804320; background: #faefe8; }
+.tag.s-conclusion   { color: #77289f; background: #f4e8fa; }
+.tag.s-related_work { color: #552fbe; background: #ede8fa; }
+.tag.s-references   { color: #8d2374; background: #fae8f6; }
+.tag.s-appendix     { color: #942543; background: #fae8ed; }
+.tag.known, .tag[class*="s-"] { border-color: transparent; }
 .text {
   font: 13px/1.5 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
   white-space: pre-wrap; word-break: break-word; margin: 0;
@@ -88,12 +132,32 @@ h1 { font-size: 22px; margin: 0 0 4px; }
   margin: 0 0 24px;
 }
 @media (max-width: 820px) { .stats { grid-template-columns: repeat(2, 1fr); } }
+/* The page tells the reader in its own standfirst to compare the
+   percentages and not the counts, and then printed the percentage in
+   12px grey inside a bracket. The percentage is the figure now and
+   the count is the small print under it.
+
+   The two colours are the two the whole demo uses for these two
+   paths — --series-baseline for the baseline, --series-ours for this
+   component — so the colour here means what it means everywhere
+   else, and a reader who has seen one chart already knows which
+   column is which without reading the label. */
 .stat {
   background: var(--surface); border: 1px solid var(--border);
-  border-radius: 10px; padding: 10px 12px;
+  border-top: 3px solid var(--border);
+  border-radius: 10px; padding: 12px 14px 13px;
 }
-.stat .n { font-size: 20px; font-weight: 650; }
+.stat.base { border-top-color: var(--series-baseline); }
+.stat.ours { border-top-color: var(--series-ours); }
+.stat .pct {
+  font-size: 34px; font-weight: 680; line-height: 1;
+  letter-spacing: -0.02em; margin-bottom: 7px;
+}
+.stat.base .pct { color: var(--series-baseline); }
+.stat.ours .pct { color: var(--series-ours); }
+.stat .n { font-size: 13px; font-weight: 600; }
 .stat .k { font-size: 12px; color: var(--muted); }
+@media (max-width: 480px) { .stat .pct { font-size: 27px; } }
 .empty { color: var(--muted); font-style: italic; }
 """
 
@@ -111,7 +175,11 @@ def _starts_mid_word(text: str) -> bool:
 
 def _chunk_html(chunk: Chunk, limit: int = 260) -> str:
     section = chunk.section.value
-    known = "unknown" if section == "unknown" else "known"
+    # "unknown" keeps the filled red chip; everything else gets both
+    # the generic class and its own, so a section this page has no
+    # colour for still lands on the readable default rather than on
+    # whatever .meta happens to be.
+    known = "unknown" if section == "unknown" else f"known s-{section}"
     text = chunk.text if len(chunk.text) <= limit else chunk.text[:limit] + " …"
 
     lead, _, rest = text.partition("\n")
@@ -159,19 +227,26 @@ def render_comparison(
 
     title = layout.paper.title or layout.paper.source_filename
 
-    def stat(n: int, total: int, label: str) -> str:
+    def stat(n: int, total: int, label: str, which: str) -> str:
+        """`which` is "base" or "ours" — which of the two paths this
+        figure measures, which is also what colours it."""
         pct = f"{(100 * n / total):.0f}%" if total else "—"
         return (
-            f'<div class="stat"><div class="n">{n} <span class="k">of {total}'
-            f" ({pct})</span></div>"
+            f'<div class="stat {which}">'
+            f'<div class="pct">{pct}</div>'
+            f'<div class="n">{n} of {total}</div>'
             f'<div class="k">{html.escape(label)}</div></div>'
         )
 
     stats = (
-        stat(b_unknown, len(baseline.chunks), "baseline chunks with no section")
-        + stat(l_unknown, len(layout.chunks), "layout-aware chunks with no section")
-        + stat(b_broken, len(baseline.chunks), "baseline chunks starting mid-word")
-        + stat(l_broken, len(layout.chunks), "layout-aware chunks starting mid-word")
+        stat(b_unknown, len(baseline.chunks),
+             "baseline chunks with no section", "base")
+        + stat(l_unknown, len(layout.chunks),
+               "layout-aware chunks with no section", "ours")
+        + stat(b_broken, len(baseline.chunks),
+               "baseline chunks starting mid-word", "base")
+        + stat(l_broken, len(layout.chunks),
+               "layout-aware chunks starting mid-word", "ours")
     )
 
     return (

@@ -1065,6 +1065,88 @@ body { background:linear-gradient(120deg,#f9fbff 0%,#f4f7fc 66%,#f8faff 100%); }
   /* On smaller screens the rail follows the header in normal document flow. */
   .dashboard-topbar { position:relative; top:auto; }
 }
+
+/* Region categories: clearer labels and prominent real counts. UI only. */
+#s3 .region-showcase .tally {
+  max-height: 280px;
+  overflow-y: auto;
+}
+#s3 .region-showcase .tally li {
+  font-size: 15px;
+  line-height: 1.45;
+  padding: 9px 2px;
+  align-items: center;
+  gap: 16px;
+}
+#s3 .region-showcase .tally li span {
+  font-weight: 520;
+  color: #334766;
+}
+#s3 .region-showcase .tally li b {
+  font-size: 19px;
+  line-height: 1.2;
+  font-weight: 750;
+  color: #16213e;
+}
+@media (max-width: 640px) {
+  #s3 .region-showcase .tally li { font-size: 14px; padding: 9px 2px; }
+  #s3 .region-showcase .tally li b { font-size: 18px; }
+}
+/* Chunk previews — readable text and labels, with the same extracted content. */
+#s5 .chunks { gap: 16px; }
+#s5 .chunk {
+  padding: 21px 24px 23px;
+  background: #f9fbff;
+  border: 1px solid #dfe8f4;
+  border-radius: 12px;
+}
+#s5 .chunk .top {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 9px 16px;
+  margin-bottom: 13px;
+  font-size: 14px;
+  line-height: 1.5;
+  color: #526580;
+}
+#s5 .chunk .top .mono {
+  font-size: 16px;
+  font-weight: 650;
+  line-height: 1.55;
+  color: #34476a;
+}
+#s5 .chunk .sect {
+  font-size: 16px;
+  font-weight: 700;
+  color: #176150;
+  background: #eaf7f1;
+  border: 1px solid #cde7dc;
+  border-radius: 8px;
+  padding: 5px 12px;
+}
+#s5 .chunk .sect.none {
+  color: #6f7788;
+  background: #fff;
+  border-style: dashed;
+}
+#s5 .chunk p {
+  font-size: 17px;
+  line-height: 1.8;
+  color: #16213e;
+  max-width: 92ch;
+  overflow-wrap: anywhere;
+}
+#s5 .chunk p .head { font-weight: 750; }
+#s5 .out > .note { font-size: 14px; line-height: 1.65; }
+@media (max-width: 640px) {
+  #s5 .chunk { padding: 17px 16px 19px; }
+  #s5 .chunk p { font-size: 16px; line-height: 1.7; }
+  #s5 .chunk .top { font-size: 15px; }
+  #s5 .chunk .top .mono { font-size: 15px; }
+  #s5 .chunk .sect { font-size: 15px; padding: 5px 10px; }
+}
+
 @media (prefers-reduced-motion: reduce) {
   .stage,.rail a,.apprail a { transition:none; }
 }

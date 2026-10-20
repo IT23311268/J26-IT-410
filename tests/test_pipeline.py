@@ -371,7 +371,13 @@ def test_the_stages_are_nested_inside_the_rail(ingested):
     explaining itself twice."""
     result, baseline = ingested
     html = render_pipeline(result, baseline)
-    nav = html[html.index("<nav class='apprail'"):html.index("</nav>")]
+    # Find the rail's OWN closing tag, not the first one on the page.
+    # The page may carry a second <nav> above the rail — a topbar, say —
+    # and a bare index("</nav>") then returns a slice that ends before
+    # the rail even opens, which is an empty string that fails for a
+    # reason that has nothing to do with the rail.
+    start = html.index("<nav class='apprail'")
+    nav = html[start:html.index("</nav>", start)]
     for _, _, label in STAGES:
         assert label in nav
 
