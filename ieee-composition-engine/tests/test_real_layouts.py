@@ -70,7 +70,7 @@ def test_iclr_structure():
 
     assert paper.title == "CO-EVOLVING ACTING AND FORECASTING FOR LANGUAGE AGENTS"
     assert paper.authors == ["Haofei Yu", "Yixing Chen"]
-    assert "3Meta AI" in paper.affiliations
+    assert "Meta AI" in paper.affiliations                 # superscript "3" removed (TTL-06)
     assert paper.abstract.startswith("Training language agents")
     assert "Large language models" not in paper.abstract           # abstract stops at 1 INTRODUCTION
 
@@ -81,7 +81,7 @@ def test_iclr_structure():
         ("5.1", 2, "Sharing Parameters"),
         ("10", 1, "Conclusion"),
         ("", 1, "Ethics Statement"),             # unnumbered statement, NOT under Conclusion
-        ("A", 1, "Appendix A: Artifact Details"),
+        ("A", 1, "Appendix: Artifact Details"),
         ("A.1", 2, "Model License"),
     ]
     assert paper.sections[4].ieee_number == ""

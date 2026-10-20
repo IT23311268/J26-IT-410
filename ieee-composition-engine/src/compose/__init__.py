@@ -23,7 +23,7 @@ from typing import List
 
 from ..models import StructuredPaper
 from .citations import convert_citations
-from .front_matter import make_abstract, make_index_terms
+from .front_matter import apply_front_matter_rules, make_abstract, make_index_terms
 from .ieee_text import apply_to_paper
 from .llm import BaseLLM, FakeLLM, LLMUnavailable, NoLLM, make_llm
 from .polish import polish_paper
@@ -64,14 +64,23 @@ def compose(paper: StructuredPaper, llm: BaseLLM, polish: bool = False) -> Struc
         report.append("References: none found, nothing to convert.")
 
     # 3. IEEE wording rules ----------------------------------------------------
+    # Every rule applied here is in the IEEE rulebook (src/rules/ieee_rules.py).
     counts = apply_to_paper(paper)
     changed = {k: v for k, v in counts.items() if v}
     if changed:
-        parts = {"figure": "figure mentions -> 'Fig. n'", "table": "table mentions -> Roman numerals",
-                 "equation": "equation mentions -> '(n)'", "contraction": "contractions expanded"}
+        parts = {"figure": "figure mentions -> 'Fig. n' (FIG-03/04)",
+                 "table": "table mentions -> Roman numerals (TAB-04)",
+                 "equation": "equation mentions -> '(n)' (EQN-02)",
+                 "section_ref": "section references -> IEEE numbers (HDG-09)",
+                 "citation": "citations moved inside the punctuation or 'reference' removed "
+                             "(CIT-04/05)",
+                 "number": "numbers and units corrected (NUM-01..04)",
+                 "contraction": "contractions expanded (STY-01)",
+                 "spacing": "double spaces removed (STY-03)"}
         report.append("IEEE wording: " + ", ".join(f"{v} {parts[k]}" for k, v in changed.items()) + ".")
 
-    # 4-5. index terms and abstract -------------------------------------------
+    # 4-5. title, authors, index terms and abstract ---------------------------
+    report.extend(apply_front_matter_rules(paper))
     report.extend(make_index_terms(paper, llm))
     report.extend(make_abstract(paper, llm))
 

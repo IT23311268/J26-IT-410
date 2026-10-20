@@ -75,8 +75,10 @@ def test_sample_front_matter(sample):
 def test_sample_running_header_and_page_numbers_are_junk(sample):
     doc, _ = sample
     junk = [b.text for b in doc.blocks if b.block_type is BlockType.JUNK]
-    assert junk.count("Preprint - not peer reviewed") == 2
+    assert junk.count("Preprint - not peer reviewed") == 3       # one per page
     assert "1" in junk and "2" in junk
+    # the labels drawn inside Figure 1 are part of the picture, not body text
+    assert "Encoder (5 stages)" in junk
 
 
 def test_sample_sections(sample):
@@ -104,7 +106,9 @@ def test_sample_equation_and_captions_stay_in_their_section(sample):
     _, paper = sample
     architecture = paper.sections[4]
     kinds = [e.kind for e in architecture.elements]
-    assert kinds == ["paragraph", "equation", "paragraph", "caption"]
+    # In the SOURCE the figure floats above the paragraph that mentions it;
+    # Step 6 (placement) moves it after that paragraph - see test_visuals.py
+    assert kinds == ["caption", "paragraph", "equation", "paragraph"]
     assert paper.sections[5].elements[1].text.startswith("Table 1")
 
 

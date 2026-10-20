@@ -17,9 +17,14 @@ from .ieee_mapper import map_to_ieee
 
 
 def structure_document(doc: ParsedDocument) -> StructuredPaper:
-    """Run stage 2: classify the lines, then rebuild the paper."""
+    """Run stage 2: classify the lines, find figure areas, then rebuild the paper."""
+    from ..visuals import detect_regions          # imported here to avoid a circular import
+
     doc, notes = classify(doc)
-    return assemble(doc, label_counts(doc), notes)
+    visual_stats = detect_regions(doc)            # Step 6: figure/table areas (PDF only)
+    paper = assemble(doc, label_counts(doc), notes)
+    paper.visual_stats = visual_stats
+    return paper
 
 
 __all__ = ["structure_document", "classify", "assemble", "label_counts", "map_to_ieee"]

@@ -63,7 +63,7 @@ def test_apa_journal_reference():
     out = ieee("Setio, A. A. A., Ciompi, F., & van Riel, S. J. (2016). Pulmonary nodule "
                "detection in CT images. IEEE Transactions on Medical Imaging, 35(5), 1160-1169.")
     assert out == ("A. A. A. Setio, F. Ciompi, and S. J. van Riel, “Pulmonary nodule "
-                   "detection in CT images,” IEEE Transactions on Medical Imaging, vol. 35, "
+                   "detection in CT images,” IEEE Trans. Med. Imag., vol. 35, "
                    "no. 5, pp. 1160–1169, 2016.")
 
 
@@ -72,28 +72,28 @@ def test_venue_is_italic():
         "Sung, H., & Jemal, A. (2021). Global cancer statistics 2020. "
         "CA: A Cancer Journal for Clinicians, 71(3), 209-249."))
     italic = [t for t, i in segments if i]
-    assert italic == ["CA: A Cancer Journal for Clinicians"]
+    assert italic == ["CA: A Cancer J. Clinicians"]
 
 
 def test_natbib_arxiv_reference():
     out = ieee("Victor Barres, Honghua Dong, and Karthik Narasimhan. Tau-bench: Evaluating "
                "agents. arXiv preprint arXiv:2506.07982, 2025. URL https://arxiv.org/abs/ 2506.07982.")
     assert out == ("V. Barres, H. Dong, and K. Narasimhan, “Tau-bench: Evaluating agents,” "
-                   "arXiv:2506.07982, 2025.")
+                   "2025, arXiv:2506.07982.")
 
 
 def test_natbib_conference_with_volume():
     out = ieee("Lili Chen, Kevin Lu, and Igor Mordatch. Decision transformer: Reinforcement "
                "learning via sequence modeling. In Advances in Neural Information Processing "
                "Systems, volume 34, 2021. URL https://proceedings.neurips.cc/paper/2021/hash/ x.html.")
-    assert "in Advances in Neural Information Processing Systems, vol. 34, 2021." in out
+    assert "in Adv. Neural Inf. Process. Syst., vol. 34, 2021." in out
 
 
 def test_proceedings_abbreviated_and_publisher_dropped():
     out = ieee("Fabian Gloeckle and Gabriel Synnaeve. Better language models. In Proceedings "
                "of the 41st International Conference on Machine Learning, volume 235 of Proceedings "
                "of Machine Learning Research, pp. 15706–15734. PMLR, 2024.")
-    assert "in Proc. 41st International Conference on Machine Learning, vol. 235, 2024, " \
+    assert "in Proc. 41st Int. Conf. Mach. Learn., vol. 235, 2024, " \
            "pp. 15706–15734." in out
     assert "PMLR" not in out
 

@@ -34,6 +34,8 @@ TIMES_ITALIC = "tiit"   # Times-Italic
 
 ALIGN_LEFT, ALIGN_CENTER, ALIGN_JUSTIFY = 0, 1, 3
 
+FIGURE, TABLE = "__figure__", "__table__"     # markers: draw a figure / table here
+
 # (text, font_size, font_name, alignment, space_after_in_points)
 CONTENT = [
     ("Automated Detection of Pulmonary Nodules in Chest CT Images Using "
@@ -94,18 +96,23 @@ CONTENT = [
      BODY_SIZE, TIMES, ALIGN_JUSTIFY, 8),
 
     ("3.2 Network Architecture", 11, TIMES_BOLD, ALIGN_LEFT, 5),
+    # The figure comes BEFORE the paragraph that mentions it - exactly what
+    # LaTeX does when it floats a figure to the top of a page. Step 6 of the
+    # engine moves it back to just after its first mention.
+    (FIGURE, 0, "", 0, 6),
+    ("Figure 1. Overall architecture of the proposed detection network.",
+     9.5, TIMES, ALIGN_CENTER, 14),
     ("The detector follows an encoder decoder design with five downsampling "
-     "stages. Each stage applies two three dimensional convolutions with "
-     "batch normalisation and a rectified linear activation. The loss "
-     "function combines a Dice term with a focal term in order to cope with "
-     "the severe class imbalance between nodule and background voxels:",
+     "stages, as shown in Figure 1. Each stage applies two three dimensional "
+     "convolutions with batch normalisation and a rectified linear "
+     "activation. The loss function combines a Dice term with a focal term "
+     "in order to cope with the severe class imbalance between nodule and "
+     "background voxels:",
      BODY_SIZE, TIMES, ALIGN_JUSTIFY, 8),
     ("L = alpha * L_dice + (1 - alpha) * L_focal          (1)",
      BODY_SIZE, TIMES_ITALIC, ALIGN_CENTER, 8),
     ("where alpha was fixed at 0.7 after a small grid search on the "
-     "validation fold.", BODY_SIZE, TIMES, ALIGN_JUSTIFY, 8),
-    ("Figure 1. Overall architecture of the proposed detection network.",
-     9.5, TIMES, ALIGN_CENTER, 14),
+     "validation fold.", BODY_SIZE, TIMES, ALIGN_JUSTIFY, 14),
 
     ("4. Experiments and Findings", 12, TIMES_BOLD, ALIGN_LEFT, 6),
     ("Training used the Adam optimiser with an initial learning rate of "
@@ -117,8 +124,10 @@ CONTENT = [
      "percent for the three dimensional baseline.",
      BODY_SIZE, TIMES, ALIGN_JUSTIFY, 8),
     ("Table 1: Comparison of detection performance on the test fold.",
-     9.5, TIMES, ALIGN_CENTER, 8),
-    ("An ablation study confirmed that the focal term contributed roughly "
+     9.5, TIMES, ALIGN_CENTER, 4),
+    (TABLE, 0, "", 0, 10),
+    ("The comparison in Table 1 shows the gain is consistent. "
+     "An ablation study confirmed that the focal term contributed roughly "
      "1.8 percentage points of the improvement, while isotropic resampling "
      "contributed a further 0.9 points.",
      BODY_SIZE, TIMES, ALIGN_JUSTIFY, 14),
@@ -151,6 +160,46 @@ CONTENT = [
 
 RUNNING_HEADER = "Preprint - not peer reviewed"
 
+FIGURE_HEIGHT, TABLE_HEIGHT = 70, 62
+
+
+def draw_figure(page, y: float) -> float:
+    """A block diagram: CT volume -> Encoder -> Decoder -> Nodule map."""
+    labels = ["CT volume", "Encoder (5 stages)", "Decoder", "Nodule map"]
+    width, gap = 92, 26
+    x = (PAGE_WIDTH - (4 * width + 3 * gap)) / 2
+    for i, label in enumerate(labels):
+        box = pymupdf.Rect(x, y + 12, x + width, y + 52)
+        page.draw_rect(box, color=(0.1, 0.3, 0.6), fill=(0.85, 0.91, 0.98), width=1)
+        page.insert_textbox(pymupdf.Rect(box.x0, box.y0 + 13, box.x1, box.y1), label,
+                            fontsize=7.5, fontname=TIMES, align=ALIGN_CENTER)
+        if i < 3:
+            page.draw_line((box.x1 + 3, box.y0 + 20), (box.x1 + gap - 3, box.y0 + 20),
+                           color=(0.2, 0.2, 0.2), width=1.2)
+            page.draw_polyline([(box.x1 + gap - 8, box.y0 + 16), (box.x1 + gap - 3, box.y0 + 20),
+                                (box.x1 + gap - 8, box.y0 + 24)], color=(0.2, 0.2, 0.2), width=1.2)
+        x += width + gap
+    return FIGURE_HEIGHT
+
+
+def draw_table(page, y: float) -> float:
+    """A small three-rule (booktabs-style) results table."""
+    x0, x1 = 170, PAGE_WIDTH - 170
+    rows = [("Method", "Sensitivity (%)"), ("Multi view baseline", "90.1"),
+            ("3D baseline", "92.0"), ("Proposed", "94.2")]
+    page.draw_line((x0, y), (x1, y), width=1)
+    for i, (left, right) in enumerate(rows):
+        ty = y + 12 + i * 13
+        page.insert_text((x0 + 6, ty), left, fontsize=8.5, fontname=TIMES_BOLD if i == 0 else TIMES)
+        page.insert_text((x1 - 80, ty), right, fontsize=8.5, fontname=TIMES_BOLD if i == 0 else TIMES)
+        if i == 0:
+            page.draw_line((x0, ty + 4), (x1, ty + 4), width=0.6)
+    page.draw_line((x0, y + 58), (x1, y + 58), width=1)
+    return TABLE_HEIGHT
+
+
+DRAWINGS = {FIGURE: (draw_figure, FIGURE_HEIGHT), TABLE: (draw_table, TABLE_HEIGHT)}
+
 
 def new_page(document: pymupdf.Document) -> tuple:
     """Add a page, draw the running header, and return (page, start_y)."""
@@ -179,6 +228,15 @@ def build(output_path: str) -> None:
     page_number = 1
 
     for text, size, font, align, space_after in CONTENT:
+        if text in DRAWINGS:
+            draw, height = DRAWINGS[text]
+            if cursor_y + height > PAGE_HEIGHT - 60:
+                page.insert_text((PAGE_WIDTH / 2 - 6, PAGE_HEIGHT - 40), str(page_number),
+                                 fontsize=9, fontname=TIMES)
+                page, cursor_y = new_page(document)
+                page_number += 1
+            cursor_y += draw(page, cursor_y) + space_after
+            continue
         used = write_block(page, cursor_y, text, size, font, align)
 
         if used < 0:                       # ran off the bottom - start a page

@@ -39,7 +39,10 @@ from ..models import BlockType, ParsedDocument, TextBlock
 # ---------------------------------------------------------------------------
 
 # "Figure 1.", "Fig. 2:", "TABLE III", "Table 4 -"
-CAPTION = re.compile(r"^(fig\.?|figure|table)\s*([0-9]+|[IVXL]+)\s*[.:\-–—]?", re.I)
+CAPTION = re.compile(r"^(fig\.?|figure|table|algorithm)\s*([0-9]+|[IVXL]+)\s*[.:\-–—]?", re.I)
+CAPTION_STRICT = re.compile(
+    r"^(fig\.?|figure|table|algorithm)\s*([0-9]+|[IVXL]+)[a-z]?\s*(?P<sep>[.:\-–—|])?\s*(?P<rest>.*)$",
+    re.I)
 
 # "Abstract", "ABSTRACT", "Abstract—This paper ...", "Abstract: We ..."
 ABSTRACT_START = re.compile(r"^abstract\b\s*[—–\-:.]?\s*", re.I)
@@ -123,6 +126,26 @@ def split_heading_number(text: str) -> tuple:
     if match:
         return match.group(1), match.group(2).strip(), 1
     return "", text.strip(), 0
+
+
+def is_caption(block: TextBlock, body_size: float) -> bool:
+    """Is this line the start of a figure / table / algorithm caption?
+
+    "Figure 1: Overview..."  "TABLE II"  "Fig. 3. Results"  -> yes
+    "Table 7 gives the size of every split we use."         -> no: an ordinary
+    sentence that happens to begin with "Table 7". A real caption has a
+    separator after the number, or stands alone, or is set in smaller type.
+    """
+    match = CAPTION_STRICT.match(block.text)
+    if not match:
+        return False
+    if match.group("sep") or not match.group("rest"):
+        return True
+    if block.font_size <= body_size - 0.4:
+        return True
+    if match.group(1).lower() == "algorithm":       # "Algorithm 1 COPE training algorithm"
+        return block.word_count <= 10 and not block.text.rstrip().endswith(".")
+    return block.text[:3].isupper()                 # IEEE style "TABLE I  Results ..."
 
 
 def is_math_fragment(block: TextBlock) -> bool:
@@ -235,6 +258,7 @@ class BlockClassifier:
         self._pass_front_matter(abstract_index)
         self._pass_references()
         self._pass_captions_and_equations()
+        self._pass_caption_continuations()
         self._pass_headings()
         self._pass_body()
         return self.doc
@@ -278,10 +302,22 @@ class BlockClassifier:
                 self._set(b, BlockType.JUNK)
 
         # Footnotes: small text starting with a marker, e.g. "*Equal contribution."
-        for b in self.blocks:
+        # A long footnote wraps: its following lines - same small size, same
+        # page, right below - are part of it too.
+        for i, b in enumerate(self.blocks):
             if b.font_size <= self.body_size - 0.8 and FOOTNOTE.match(b.text) \
-                    and not CAPTION.match(b.text):
+                    and not CAPTION.match(b.text) and b.block_type is BlockType.UNKNOWN:
                 self._set(b, BlockType.JUNK)
+                prev = b
+                for nxt in self.blocks[i + 1:]:
+                    if (nxt.page == b.page and abs(nxt.font_size - b.font_size) <= 0.25
+                            and 0 <= nxt.y0 - prev.y0 < 2.2 * b.font_size
+                            and nxt.block_type is BlockType.UNKNOWN
+                            and not FOOTNOTE.match(nxt.text)):
+                        self._set(nxt, BlockType.JUNK)
+                        prev = nxt
+                    else:
+                        break
 
     def _pass_title(self) -> None:
         """The title is the largest text near the top of page 1.
@@ -337,7 +373,7 @@ class BlockClassifier:
             break
 
         if abstract_index is None:
-            self.notes.append("No abstract found - one will be generated in Step 5.")
+            self.notes.append("No abstract found - one is drafted during composition (needs Gemini).")
         else:
             # Everything after the abstract heading is abstract text, until we
             # hit the keywords line or something that looks like a heading.
@@ -382,13 +418,73 @@ class BlockClassifier:
                     break
                 end += 1
 
-        for b in self.blocks[start:end]:
-            if b.block_type is not BlockType.UNKNOWN:
+        zone = [b for b in self.blocks[start:end] if b.block_type is BlockType.UNKNOWN]
+
+        # Many papers put a figure on page 1, between the authors and the
+        # abstract. Its caption and the text drawn inside it are NOT authors:
+        # label the caption first, then find the text inside the figure.
+        for b in zone:
+            if CAPTION.match(b.text) and is_caption(b, self.body_size) and b.word_count >= 2:
+                self._set(b, BlockType.CAPTION)
+        self._pass_caption_continuations()
+        captions = [b for b in zone if b.block_type is BlockType.CAPTION and CAPTION.match(b.text)]
+        in_figure = self._front_page_figure_text(zone, captions)
+
+        for b in zone:
+            if b.block_type is not BlockType.UNKNOWN or id(b) in in_figure:
                 continue
+            after_figure = any(c.page == b.page and b.y0 > c.y0 for c in captions)
             if b.italic or AFFILIATION_WORDS.search(b.text) or NUMBERED_AFFILIATION.match(b.text):
                 self._set(b, BlockType.AFFILIATION)
-            else:
+            elif not after_figure:
                 self._set(b, BlockType.AUTHOR)
+            # a plain line after a front-page figure is neither: the body pass decides
+
+    def _front_page_figure_text(self, zone: List[TextBlock], captions: List[TextBlock]) -> set:
+        """Lines drawn inside a figure that sits above one of these captions.
+
+        The figure is found from the page's own drawings and images: those
+        just above the caption, plus everything touching them going upward.
+        Text in that area (axis titles, legends) belongs to the figure.
+        """
+        figure_captions = [c for c in captions if not re.match(r"(?i)table", c.text)]
+        if not figure_captions or self.doc.source_format != "pdf":
+            return set()
+        try:
+            import pymupdf
+            pdf = pymupdf.open(self.doc.source_path)
+        except Exception:
+            return set()
+        inside: set = set()
+        for cap in figure_captions:
+            page = pdf[cap.page - 1]
+            area = page.rect.width * page.rect.height
+            boxes = [tuple(d["rect"]) for d in page.get_drawings()
+                     if d.get("rect") is not None and d["rect"].width * d["rect"].height < 0.8 * area]
+            boxes += [tuple(i["bbox"]) for i in page.get_image_info()]
+            above = [g for g in boxes if g[3] <= cap.y0 + 2]
+            figure = [g for g in above if cap.y0 - g[3] <= 90]       # close above the caption
+            if not figure:
+                continue
+            top = min(g[1] for g in figure)
+            grew = True
+            while grew:                                              # grow upward while touching
+                grew = False
+                for g in above:
+                    if g not in figure and g[3] >= top - 14 and g[1] < top:
+                        figure.append(g)
+                        top, grew = g[1], True
+            # text inside the figure area, then text stacked just above it
+            # (plot titles, legends) - touching the figure, so part of it
+            candidates = sorted((b for b in zone if b.page == cap.page and b is not cap
+                                 and b.block_type is BlockType.UNKNOWN and b.y1 <= cap.y0 + 1),
+                                key=lambda b: -b.y1)
+            for b in candidates:
+                if b.y0 >= top - 2 or b.y1 >= top - 14:
+                    inside.add(id(b))
+                    top = min(top, b.y0)
+        pdf.close()
+        return inside
 
     def _pass_references(self) -> None:
         """After the 'References' heading, every line is part of a reference,
@@ -413,7 +509,7 @@ class BlockClassifier:
         for b in self.blocks:
             if b.block_type is not BlockType.UNKNOWN:
                 continue
-            if CAPTION.match(b.text) and b.word_count >= 2:
+            if is_caption(b, self.body_size) and (b.word_count >= 2 or b.is_upper):
                 self._set(b, BlockType.CAPTION)
             elif (EQUATION_NUMBER.search(b.text) and MATH_SIGNS.search(b.text)
                   and b.word_count <= 25):
@@ -422,6 +518,34 @@ class BlockClassifier:
                 self._set(b, BlockType.CODE)
             elif is_math_fragment(b):
                 self._set(b, BlockType.EQUATION)
+
+    def _pass_caption_continuations(self) -> None:
+        """A long caption wraps onto several lines; only the first starts with
+        "Figure 3:". The lines that follow - same size, tightly spaced, under
+        the caption - belong to the caption, not to the body text."""
+        content = [b for b in self.blocks if b.block_type is not BlockType.JUNK]
+        for i, cap in enumerate(content):
+            if cap.block_type is not BlockType.CAPTION or not CAPTION.match(cap.text):
+                continue
+            prev = cap
+            left, right = cap.x0, cap.x1
+            for nxt in content[i + 1:]:
+                if nxt.block_type is not BlockType.UNKNOWN or CAPTION.match(nxt.text):
+                    break
+                if nxt.page != cap.page or abs(nxt.font_size - cap.font_size) > 0.35:
+                    break
+                # "Table 4:" and "Backbone ablations." can be separate pieces
+                # on the SAME line - that is a continuation too.
+                same_line = abs(nxt.y0 - prev.y0) < 2 and nxt.x0 >= prev.x1 - 2
+                gap = nxt.y0 - prev.y1
+                overlap = min(nxt.x1, right + 6) - max(nxt.x0, left - 6)
+                below = -2 <= gap < 0.45 * cap.font_size and \
+                    overlap >= 0.6 * max(1.0, nxt.x1 - nxt.x0)
+                if not (same_line or below):
+                    break
+                nxt.block_type = BlockType.CAPTION
+                left, right = min(left, nxt.x0), max(right, nxt.x1)
+                prev = nxt
 
     def _pass_headings(self) -> None:
         """Find headings, then decide which are sections and which are subsections.

@@ -71,8 +71,13 @@
       "level": 2,
       "content": [
         {
+          "type": "figure",
+          "number": 1,
+          "caption": "Overall architecture of the proposed detection network."
+        },
+        {
           "type": "paragraph",
-          "text": "The detector follows an encoder decoder design with five downsampling stages. Each stage applies two three dimensional convolutions with batch normalisation and a rectified linear activation. The loss function combines a Dice term with a focal term in order to cope with the severe class imbalance between nodule and background voxels:",
+          "text": "The detector follows an encoder decoder design with five downsampling stages, as shown in Figure 1. Each stage applies two three dimensional convolutions with batch normalisation and a rectified linear activation. The loss function combines a Dice term with a focal term in order to cope with the severe class imbalance between nodule and background voxels:",
           "verified": true
         },
         {
@@ -83,11 +88,6 @@
           "type": "paragraph",
           "text": "where alpha was fixed at 0.7 after a small grid search on the validation fold.",
           "verified": true
-        },
-        {
-          "type": "figure",
-          "number": 1,
-          "caption": "Overall architecture of the proposed detection network."
         }
       ]
     },
@@ -107,7 +107,7 @@
         },
         {
           "type": "paragraph",
-          "text": "An ablation study confirmed that the focal term contributed roughly 1.8 percentage points of the improvement, while isotropic resampling contributed a further 0.9 points.",
+          "text": "The comparison in Table 1 shows the gain is consistent. An ablation study confirmed that the focal term contributed roughly 1.8 percentage points of the improvement, while isotropic resampling contributed a further 0.9 points.",
           "verified": true
         }
       ]

@@ -24,7 +24,7 @@ from typing import Dict, List, Tuple
 
 from ..models import (BlockType, Element, ParsedDocument, Section,
                       StructuredPaper, TextBlock)
-from .classifier import (ABSTRACT_START, KEYWORDS_START, split_heading_number,
+from .classifier import (ABSTRACT_START, CAPTION, KEYWORDS_START, split_heading_number,
                          word_style_level)
 
 # A new reference entry usually starts like one of these:
@@ -32,6 +32,26 @@ from .classifier import (ABSTRACT_START, KEYWORDS_START, split_heading_number,
 REFERENCE_START = re.compile(
     r"^(\[\d+\]|\d{1,3}\.\s|[A-Z][A-Za-z'’\-]+,\s+[A-Z]\.|[A-Z][A-Za-z'’\-]+\s+[A-Z]{1,3},)"
 )
+
+
+# ---------------------------------------------------------------------------
+# Positions (Step 6 needs to know where captions and equations were)
+# ---------------------------------------------------------------------------
+
+def _bbox_of(block: TextBlock) -> List[float]:
+    return [block.x0, block.y0, block.x1, block.y1] if block.x1 else []
+
+
+def _grow_bbox(element: Element, block: TextBlock) -> None:
+    """Stretch an element's box to cover one more line (same page only)."""
+    box = _bbox_of(block)
+    if not box or block.page != element.page:
+        return
+    if not element.bbox:
+        element.bbox = box
+    else:
+        element.bbox = [min(element.bbox[0], box[0]), min(element.bbox[1], box[1]),
+                        max(element.bbox[2], box[2]), max(element.bbox[3], box[3])]
 
 
 # ---------------------------------------------------------------------------
@@ -161,29 +181,119 @@ def _group_into_references(blocks: List[TextBlock], stats: _LayoutStats) -> List
     return [join_lines([b.text for b in entry]) for entry in entries]
 
 
+def _rejoin_split_paragraphs(section: Section) -> None:
+    """Join the two halves of a paragraph that a float cut in two.
+
+    In a PDF, a figure, table or algorithm box can interrupt a paragraph:
+    "...the forecaster is trained on successful on-policy" [Algorithm 1]
+    "trajectories (Sec. 5.2), and the forecasting loss is added..."
+    The first half has no full stop, the second starts in lower case. They
+    are joined back into one paragraph, and the float moves after it.
+    (A paragraph ending in ':' followed by an equation is left alone - that
+    is a deliberate break.)
+    """
+    elements = section.elements
+    i = 0
+    while i < len(elements):
+        first = elements[i]
+        if first.kind != "paragraph" or first.text.rstrip().endswith((".", "?", "!", ":")):
+            i += 1
+            continue
+        j = i + 1
+        while j < len(elements) and elements[j].kind in ("caption", "code"):
+            j += 1                                   # skip over the interrupting float(s)
+        if j < len(elements) and j > i + 1 and elements[j].kind == "paragraph" \
+                and elements[j].text[:1].islower():
+            second = elements[j]
+            first.text = join_lines([first.text, second.text])
+            floats = elements[i + 1:j]
+            elements[i + 1:j + 1] = floats          # second half gone, floats now follow
+            continue                                # the joined paragraph may continue again
+        i += 1
+
+
 # ---------------------------------------------------------------------------
 # Front matter helpers
 # ---------------------------------------------------------------------------
 
-def _split_authors(lines: List[str]) -> List[str]:
-    """Pull individual names out of the author lines.
+MARK = r"(?:\d{1,2}|[∗*†‡§¶])"
+NOTE_WORDS = re.compile(r"equal contribution|corresponding|work done|intern|contact", re.I)
 
-    'K. M. Perera, S. Fernando and A. Jayasuriya'  -> three names
-    'Haofei Yu1 ∗'  'Yixing Chen2 ∗'  (one per line) -> 'Haofei Yu', 'Yixing Chen'
 
-    Superscript affiliation numbers and footnote stars come out of the PDF as
-    ordinary characters glued to the name, so they are cut off here.
+def parse_authors(lines: List[str]) -> Tuple[List[str], List[List[str]]]:
+    """Pull individual names, and each name's affiliation marks, out of the author lines.
+
+    'Shangyin Tan1, Ben Zhou1,3'                  -> names ['Shangyin Tan', 'Ben Zhou'],
+                                                     marks [['1'], ['1', '3']]
+    'K. M. Perera, S. Fernando and A. Jayasuriya' -> three names, no marks
+    'Haofei Yu1 ∗'  'Yixing Chen2 ∗'  (one per line)
+
+    Superscript numbers come out of the PDF as ordinary digits glued to the
+    name; they are the link to the affiliation list. Footnote symbols
+    (∗ equal contribution, † ...) are dropped. A name split over two lines
+    ('..., Carol' / 'White1, ...') is joined back together.
+    """
+    # a list that wraps in the middle of a name: the line ends in a name, not a separator
+    joined: List[str] = []
+    for line in lines:
+        line = line.strip()
+        if joined and "," in joined[-1] and re.search(r"[A-Za-z]$", joined[-1]):
+            joined[-1] += " " + line
+        else:
+            joined.append(line)
+
+    names: List[str] = []
+    marks: List[List[str]] = []
+    for line in joined:
+        line = re.sub(r"\s+and\s+|\s*&\s*", ", ", line)
+        for m in re.finditer(r"(\d{1,2})|([∗*†‡§¶])|(,)|([^\d,∗*†‡§¶]+)", line):
+            digit, symbol, comma, text = m.groups()
+            if text is not None:
+                text = text.strip()
+                if re.search(r"[A-Za-z]", text):
+                    names.append(text)
+                    marks.append([])
+            elif digit is not None and names and digit not in marks[-1]:
+                marks[-1].append(digit)
+    return names, marks
+
+
+def parse_affiliations(lines: List[str]) -> Tuple[List[str], Dict[str, int]]:
+    """Split the affiliation lines into clean names and a mark -> index map.
+
+    '1UC Berkeley 2Stanford' / '3Bespoke Labs' -> ['UC Berkeley', 'Stanford', 'Bespoke Labs'],
+                                                  {'1': 0, '2': 1, '3': 2}
+    Notes such as '∗Equal contribution' are not affiliations and are dropped.
     """
     names: List[str] = []
+    by_mark: Dict[str, int] = {}
     for line in lines:
-        line = re.sub(r"\s+and\s+|\s*&\s*", ", ", line)
-        # a name followed by markers such as "1 ∗," also separates two names
-        line = re.sub(r"(?<=[a-z])[\d]+[\s∗*†‡§,]*", ", ", line)
-        for part in line.split(","):
-            part = re.sub(r"[\s\d∗*†‡§]+$", "", part).strip()
-            if part:
-                names.append(part)
-    return names
+        pieces = re.split(rf"(?:^|\s)({MARK})\s*(?=[A-Z{{(])", line.strip())
+        lead = pieces[0].strip()
+        if lead and not NOTE_WORDS.search(lead):
+            names.append(lead)
+        for mark, text in zip(pieces[1::2], pieces[2::2]):
+            text = text.strip().rstrip(",;")
+            if not text or NOTE_WORDS.search(text):
+                continue
+            if mark not in by_mark:
+                by_mark[mark] = len(names)
+                names.append(text)
+    return names, by_mark
+
+
+def link_authors(names: List[str], marks: List[List[str]], affiliations: List[str],
+                 by_mark: Dict[str, int]) -> List[List[int]]:
+    """For each author, the indexes of their affiliations (rule TTL-06)."""
+    if any(marks) and by_mark:
+        return [[by_mark[m] for m in ms if m in by_mark] for ms in marks]
+    if len(affiliations) == 1:                     # everyone shares the one affiliation
+        return [[0] for _ in names]
+    return []
+
+
+def _split_authors(lines: List[str]) -> List[str]:
+    return parse_authors(lines)[0]
 
 
 def _split_keywords(text: str) -> List[str]:
@@ -209,8 +319,10 @@ def assemble(doc: ParsedDocument, label_counts: dict, notes: List[str]) -> Struc
 
     # --- front matter --------------------------------------------------
     paper.title = join_lines([b.text for b in of_type(BlockType.TITLE)])
-    paper.authors = _split_authors([b.text for b in of_type(BlockType.AUTHOR)])
-    paper.affiliations = [b.text for b in of_type(BlockType.AFFILIATION)]
+    paper.authors, marks = parse_authors([b.text for b in of_type(BlockType.AUTHOR)])
+    paper.affiliations, by_mark = parse_affiliations(
+        [b.text for b in of_type(BlockType.AFFILIATION)])
+    paper.author_affiliations = link_authors(paper.authors, marks, paper.affiliations, by_mark)
 
     abstract_text = join_lines([b.text for b in of_type(BlockType.ABSTRACT)])
     paper.abstract = ABSTRACT_START.sub("", abstract_text, count=1).strip()
@@ -273,17 +385,36 @@ def assemble(doc: ParsedDocument, label_counts: dict, notes: List[str]) -> Struc
                 current = Section(heading="", number="", level=1)
                 paper.sections.append(current)
             last = current.elements[-1] if current.elements else None
-            if kind is BlockType.EQUATION and last is not None \
+            if kind is BlockType.CAPTION and last is not None and last.kind == "caption" \
+                    and not CAPTION.match(b.text):
+                # the next line of a caption that wraps over several lines
+                last.text = join_lines([last.text, b.text.strip()])
+                _grow_bbox(last, b)
+            elif kind is BlockType.EQUATION and last is not None \
                     and last.kind in ("equation", "math_region"):
                 # Several equation lines in a row are scraps of ONE display
                 # equation that the PDF stored in pieces. Keep them together.
                 last.kind = "math_region"
                 last.text = f"{last.text} {b.text.strip()}"
+                _grow_bbox(last, b)
             else:
                 current.elements.append(
-                    Element(kind=kind.value, text=b.text.strip(), page=b.page)
+                    Element(kind=kind.value, text=b.text.strip(), page=b.page,
+                            bbox=_bbox_of(b), region=list(b.region))
                 )
     flush_body()
+
+    # --- a front-page figure before the first heading ------------------
+    # It has no section of its own: give it to the first real section, where
+    # contextual placement (Step 6) puts it after the paragraph that mentions it.
+    if len(paper.sections) > 1 and not paper.sections[0].heading \
+            and not any(e.kind == "paragraph" for e in paper.sections[0].elements):
+        orphan = paper.sections.pop(0)
+        paper.sections[0].elements = orphan.elements + paper.sections[0].elements
+
+    # --- rejoin paragraphs a figure split in two ------------------------
+    for section in paper.sections:
+        _rejoin_split_paragraphs(section)
 
     # --- sanity checks -------------------------------------------------
     if not paper.title:
@@ -291,7 +422,7 @@ def assemble(doc: ParsedDocument, label_counts: dict, notes: List[str]) -> Struc
     if not paper.authors:
         paper.warnings.append("No authors found.")
     if not paper.keywords:
-        paper.warnings.append("No keywords found - index terms will be generated in Step 5.")
+        paper.warnings.append("No keywords found - index terms are suggested during composition.")
     if not [s for s in paper.sections if s.heading]:
         paper.warnings.append("No section headings found - the paper may be one block of text.")
 

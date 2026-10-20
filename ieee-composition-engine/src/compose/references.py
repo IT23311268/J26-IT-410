@@ -29,6 +29,7 @@ import re
 import unicodedata
 from typing import Any, Dict, List, Optional, Tuple
 
+from ..rules import ieee_rules as R
 from .llm import BaseLLM, LLMUnavailable
 
 Record = Dict[str, Any]
@@ -71,7 +72,7 @@ def ieee_author_list(authors: List[Dict[str, str]]) -> str:
     names = [ieee_name(a) for a in authors if a.get("family")]
     if not names:
         return ""
-    if len(names) > 6:                    # IEEE: more than six -> "et al."
+    if len(names) > R.MAX_AUTHORS_BEFORE_ET_AL:       # REF-03: more than six -> "et al."
         return f"{names[0]} et al."
     if len(names) == 1:
         return names[0]
@@ -154,6 +155,26 @@ def _repair(text: str) -> str:
     text = re.sub(r"https?:\s+//", lambda m: m.group(0).replace(" ", ""), text)  # 'https: //'
     text = re.sub(r"(https?://\S*\.)\s+([a-z]{2,6}/)", r"\1\2", text)  # 'aclanthology. org/'
     return re.sub(r"(\d)\s*[–-]\s+(\d)", r"\1–\2", text)
+
+
+def _tidy_fields(record: Record) -> None:
+    """Clean up fields however they were parsed (rules or Gemini).
+
+    * repair broken URLs and DOIs ('...v39i22. 34505' -> '...v39i22.34505')
+    * a venue must not carry the volume or publisher:
+      'Proc. of ICML, volume 235 of Proceedings of Machine Learning Research. PMLR'
+      -> 'Proc. of ICML' (the volume moves to its own field)
+    """
+    for key in ("url", "doi"):
+        if record.get(key):
+            record[key] = re.sub(r"\s+", "", _repair(str(record[key]))).rstrip(".,")
+    venue = str(record.get("venue", ""))
+    volume = re.search(r",?\s*\bvolume\s+(\d+)(\s+of\s+[^,.]+)?", venue)
+    if volume:
+        record["volume"] = record.get("volume") or volume.group(1)
+        venue = venue.replace(volume.group(0), "")
+    venue = re.split(r"\.\s+(?=[A-Z])", venue)[0]          # drop ". PMLR" etc.
+    record["venue"] = _clean(re.sub(r"^\s*In\s+", "", venue))
 
 
 def _fill_tail(record: Record, rest: str) -> None:
@@ -298,7 +319,9 @@ def parse_references(raws: List[str], llm: BaseLLM) -> Tuple[List[Record], List[
     if llm.available and raws:
         for start in range(0, len(raws), BATCH):
             chunk = raws[start:start + BATCH]
-            numbered = "\n".join(f"{i + 1}. {r}" for i, r in enumerate(chunk))
+            # Repair line-wrapping damage BEFORE Gemini sees the text, so its
+            # (exact) copy of URLs and DOIs is already clean.
+            numbered = "\n".join(f"{i + 1}. {_repair(r)}" for i, r in enumerate(chunk))
             try:
                 answer = llm.ask_json("parse_references", PARSE_PROMPT.format(refs=numbered))
             except LLMUnavailable as error:
@@ -315,6 +338,7 @@ def parse_references(raws: List[str], llm: BaseLLM) -> Tuple[List[Record], List[
                              "url", "doi")}
                     item["authors"] = [a for a in item["authors"] if isinstance(a, dict)]
                     item.update(raw=raw, source="gemini")
+                    _tidy_fields(item)
                     records[start + offset] = item
 
     rejected = 0
@@ -354,15 +378,52 @@ def reference_type(record: Record) -> str:
     return "other"
 
 
+_ABBREVIATABLE = re.compile(r"\b(" + "|".join(sorted(R.VENUE_ABBREVIATIONS, key=len, reverse=True))
+                            + r")\b")
+
+
+def abbreviate_venue(venue: str) -> str:
+    """REF-06: IEEE word abbreviations for journal and conference names.
+
+    "IEEE Transactions on Medical Imaging" -> "IEEE Trans. Med. Imag."
+    "Journal of Machine Learning Research" -> "J. Mach. Learn. Res."
+    A one-word name ("Nature") is never abbreviated, and the small joining
+    words ("of", "on", "the", "and") are dropped once a name is abbreviated.
+    """
+    words = venue.split()
+    if len(words) < 2 or not _ABBREVIATABLE.search(venue):
+        return venue
+    out = []
+    for i, word in enumerate(words):
+        core = word.rstrip(",:;")
+        tail = word[len(core):]
+        if core in R.VENUE_ABBREVIATIONS:
+            out.append(R.VENUE_ABBREVIATIONS[core] + tail)
+        elif core.lower() in R.VENUE_DROP_WORDS and i > 0:
+            continue
+        else:
+            out.append(word)
+    return " ".join(out)
+
+
+def unabbreviated_words(venue: str) -> List[str]:
+    """Words in a venue name that IEEE would abbreviate (for the compliance check)."""
+    if len(venue.split()) < 2:
+        return []
+    return _ABBREVIATABLE.findall(venue)
+
+
 def format_ieee(record: Record) -> Segments:
     """Write one reference in IEEE style, as (text, italic) pieces."""
     pieces: Segments = []
     authors = ieee_author_list(record.get("authors", []))
     title = _clean(record.get("title", ""))
     venue = _clean(record.get("venue", ""))
-    year = str(record.get("year", "")).strip()
+    year = str(record.get("year", "")).strip() or R.NO_DATE      # REF-10
     pages = (record.get("pages") or "").replace("-", "–").replace(" ", "")
     kind = reference_type(record)
+    if kind in ("journal", "conference"):
+        venue = abbreviate_venue(re.sub(r"^(In\s+)?Proceedings of (the )?", "Proc. ", venue))
 
     if authors:
         pieces.append((f"{authors}, ", False))
@@ -384,8 +445,7 @@ def format_ieee(record: Record) -> Segments:
             tail.append(year)
         pieces.append(((", " + ", ".join(tail)) if tail else "", False))
     elif kind == "conference":
-        # IEEE abbreviates "Proceedings of the ..." to "Proc. ..."
-        venue = re.sub(r"^(In\s+)?Proceedings of (the )?", "Proc. ", venue)
+        # REF-07: "in Proc. ..." ("Proceedings of the" was shortened above)
         pieces.append(("in ", False))
         pieces.append((venue, True))
         tail = [f"vol. {record['volume']}"] if record.get("volume") else []
@@ -398,7 +458,8 @@ def format_ieee(record: Record) -> Segments:
         found = ARXIV_ID.search(venue) or ARXIV_ID.search(
             record.get("raw", "") + " " + record.get("url", ""))
         label = f"arXiv:{found.group(1)}" if found else (venue or "arXiv preprint")
-        pieces.append((label + (f", {year}" if year else ""), False))
+        # REF-09: J. K. Author, "Title," year, arXiv:xxxx.
+        pieces.append(((f"{year}, " if year else "") + label, False))
     else:
         if venue:
             pieces.append((venue, True))

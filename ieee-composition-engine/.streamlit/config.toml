@@ -1,0 +1,23 @@
+# Streamlit settings for app.py - the dark theme and upload limit.
+[theme]
+base = "dark"
+primaryColor = "#6C9BFF"
+backgroundColor = "#101826"
+secondaryBackgroundColor = "#172235"
+textColor = "#E6EAF2"
+borderColor = "#27344C"
+baseRadius = "6px"
+font = "IBM Plex Sans"
+headingFont = "Source Serif 4"
+
+[server]
+maxUploadSize = 60
+# serves the bundled fonts in static/ at app/static/
+enableStaticServing = true
+
+[browser]
+gatherUsageStats = false
+
+[client]
+# hides the "Deploy" button - this runs on your own computer
+toolbarMode = "minimal"

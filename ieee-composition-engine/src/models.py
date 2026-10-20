@@ -64,6 +64,9 @@ class TextBlock:
     column: int = 0           # 0 = left column or full width, 1 = right column
     max_font_size: float = 0.0  # largest letter on the line (small-caps headings
                                 # use a big first letter: "I" 12pt + "NTRODUCTION" 9.6pt)
+    # Step 6: for a caption, the area of the page its figure/table occupies
+    # [x0, y0, x1, y1]; empty if none was found.
+    region: List[float] = field(default_factory=list)
 
     @property
     def word_count(self) -> int:
@@ -89,6 +92,11 @@ class ParsedDocument:
     source_format: str                   # "pdf" or "docx"
     page_count: int
     blocks: List[TextBlock] = field(default_factory=list)
+
+    # Size of the pages in points (1 inch = 72 points). Used to judge margins,
+    # columns and page size for the compliance score.
+    page_width: float = 0.0
+    page_height: float = 0.0
 
     # Filled in by _measure_body_font(). The most common font size in the
     # document is almost always the body text size, which gives us a baseline:
@@ -145,6 +153,11 @@ class Element:
     text: str
     page: int = 1
     image: str = ""          # path to a figure image, when one is available
+    # Step 6: where this content sat on the source page, [x0, y0, x1, y1].
+    # For a caption, "region" is the area of its figure or table; for a
+    # broken equation, "bbox" covers all its scattered pieces.
+    bbox: List[float] = field(default_factory=list)
+    region: List[float] = field(default_factory=list)
 
 
 @dataclass
@@ -187,6 +200,9 @@ class StructuredPaper:
     title: str = ""
     authors: List[str] = field(default_factory=list)
     affiliations: List[str] = field(default_factory=list)
+    # for each author, the indexes of their affiliations in `affiliations`
+    # ("Ben Zhou" with superscripts 1,3 -> [0, 2]); empty when not known
+    author_affiliations: List[List[int]] = field(default_factory=list)
     abstract: str = ""
     keywords: List[str] = field(default_factory=list)
     sections: List[Section] = field(default_factory=list)
@@ -207,6 +223,11 @@ class StructuredPaper:
     ai_log: List[str] = field(default_factory=list)
     # what stage 5 did, line by line, for the terminal report
     compose_report: List[str] = field(default_factory=list)
+
+    # Filled in by stage 6:
+    visual_stats: dict = field(default_factory=dict)      # figures/tables found on the pages
+    placement_report: List[dict] = field(default_factory=list)  # where each visual was moved
+    placement_summary: dict = field(default_factory=dict)       # before/after distances
 
     # Things the classifier noticed but could not fix, e.g. "no abstract found".
     warnings: List[str] = field(default_factory=list)

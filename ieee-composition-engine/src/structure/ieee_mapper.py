@@ -42,6 +42,7 @@ from dataclasses import dataclass
 from typing import Dict, List, Tuple
 
 from ..models import Section, StructuredPaper
+from ..rules import ieee_rules as R
 
 # ---------------------------------------------------------------------------
 # The IEEE skeleton
@@ -55,25 +56,17 @@ class Slot:
     numbered: bool      # does it get a Roman numeral?
 
 
-SLOTS: Dict[str, Slot] = {s.key: s for s in [
-    Slot("introduction",   "Introduction",   1, True),
-    Slot("related_work",   "Related Work",   2, True),
-    Slot("methodology",    "Methodology",    3, True),
-    Slot("experiments",    "Experimental Setup", 4, True),
-    Slot("results",        "Results",        5, True),
-    Slot("discussion",     "Discussion",     6, True),
-    Slot("conclusion",     "Conclusion",     7, True),
-    Slot("acknowledgment", "Acknowledgment", 8, False),   # IEEE spells it without the "e"
-    # Statements many venues now require (ethics, reproducibility, AI use...).
-    # IEEE has no fixed name for them, so they keep their own, unnumbered.
-    Slot("statement",      "",               8, False),
-    Slot("appendix",       "Appendix",       9, False),
-]}
+# The skeleton comes from the IEEE rulebook (rules HDG-05, HDG-06, HDG-07,
+# ACK-01): names, order, and which sections get a Roman numeral.
+# "statement" holds ethics / reproducibility statements, which keep their own
+# name, unnumbered.
+SLOTS: Dict[str, Slot] = {key: Slot(key, heading, order, numbered)
+                          for key, (heading, order, numbered) in R.SECTIONS.items()}
 
 OTHER = "other"     # a real section that fits none of the slots
 
 # Slots a research paper is expected to have. Missing ones are reported.
-REQUIRED = ["introduction", "methodology", "results", "conclusion"]
+REQUIRED = list(R.REQUIRED_SECTIONS)
 
 
 # ---------------------------------------------------------------------------
@@ -253,7 +246,8 @@ def score_section(heading: str, text: str, is_first: bool, is_last: bool,
 # ---------------------------------------------------------------------------
 
 def to_roman(n: int) -> str:
-    numerals = [(10, "X"), (9, "IX"), (5, "V"), (4, "IV"), (1, "I")]
+    numerals = [(100, "C"), (90, "XC"), (50, "L"), (40, "XL"),
+                (10, "X"), (9, "IX"), (5, "V"), (4, "IV"), (1, "I")]
     out = ""
     for value, symbol in numerals:
         while n >= value:
@@ -267,8 +261,7 @@ def to_letter(n: int) -> str:
 
 
 # Acronyms that must stay in capitals when an ALL-CAPS heading is re-cased.
-ACRONYMS = {"ai", "ml", "llm", "llms", "rl", "nlp", "cnn", "rnn", "gpu", "cpu", "api", "iot",
-            "ieee", "ct", "mri", "rag", "ui", "ux", "sql", "url", "gpt", "bert", "svm", "knn"}
+ACRONYMS = R.KEEP_UPPER
 
 
 def _smart_title(text: str) -> str:
@@ -350,6 +343,9 @@ def map_to_ieee(paper: StructuredPaper) -> StructuredPaper:
     roman = 0
     letter = 0
     sub_number = 0
+    sub_letter = 0
+    # HDG-08: one appendix is just "Appendix"; several are "Appendix A", "Appendix B"
+    appendix_count = sum(1 for s in sections if s.level == 1 and s.ieee_slot == "appendix")
     for section in sections:
         if section.level == 1:
             letter = 0
@@ -357,7 +353,8 @@ def map_to_ieee(paper: StructuredPaper) -> StructuredPaper:
             if slot and slot.key == "appendix":
                 # IEEE: "Appendix A" + its title, not numbered with the sections
                 name = _smart_title(section.heading) if section.heading else ""
-                label = f"Appendix {section.number}" if section.number else "Appendix"
+                label = f"Appendix {section.number}" if section.number and appendix_count > 1 \
+                    else "Appendix"
                 section.ieee_heading = f"{label}: {name}" if name and name.lower() != "appendix" \
                     else label
             elif slot and slot.key == "statement":
@@ -385,11 +382,17 @@ def map_to_ieee(paper: StructuredPaper) -> StructuredPaper:
             section.ieee_slot = "subsection"
             section.ieee_heading = _smart_title(section.heading)
             section.ieee_number = to_letter(letter)
-        else:
-            sub_number += 1
+        elif section.level == 3:
+            sub_number += 1                       # HDG-03: "1) Name:"
+            sub_letter = 0
             section.ieee_slot = "subsection"
             section.ieee_heading = _smart_title(section.heading)
             section.ieee_number = f"{sub_number})"
+        else:
+            sub_letter += 1                       # HDG-04: "a) Name:"
+            section.ieee_slot = "subsection"
+            section.ieee_heading = _smart_title(section.heading)
+            section.ieee_number = f"{to_letter(sub_letter).lower()})"
 
     # --- what's missing, and is anything out of order? --------------------
     found = {s.ieee_slot for s in sections if s.level == 1}

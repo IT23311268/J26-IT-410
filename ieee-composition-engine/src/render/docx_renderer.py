@@ -29,10 +29,11 @@ from typing import List
 
 from docx import Document
 from docx.enum.section import WD_SECTION
+from docx.enum.table import WD_TABLE_ALIGNMENT
 from docx.enum.text import WD_ALIGN_PARAGRAPH, WD_TAB_ALIGNMENT
 from docx.oxml import OxmlElement
 from docx.oxml.ns import qn
-from docx.shared import RGBColor
+from docx.shared import Pt, Emu, RGBColor
 
 from ..models import Element, Section, StructuredPaper
 from ..structure.ieee_mapper import to_roman
@@ -49,7 +50,8 @@ def _add(paragraph, text: str):
     """Add text to a paragraph, minus any characters Word cannot store."""
     return paragraph.add_run(CONTROL_CHARS.sub("", text))
 
-CAPTION_PARTS = re.compile(r"^(fig\.?|figure|table)\s*([0-9]+|[IVXL]+)\s*[.:\-–—]?\s*(.*)$", re.I)
+CAPTION_PARTS = re.compile(
+    r"^(fig\.?|figure|table|algorithm)\s*([0-9]+|[IVXL]+)[a-z]?\s*[.:\-–—|]?\s*(.*)$", re.I)
 EQUATION_NUMBER = re.compile(r"^(.*?)\s*(\(\s*\d+\s*\))\s*$")
 ALREADY_NUMBERED_REF = re.compile(r"^\s*(\[\d+\]|\d{1,3}\.)\s*")
 
@@ -132,6 +134,7 @@ class IEEEDocxRenderer:
         self.paper = paper
         self.doc = Document()
         self.notes: List[str] = []       # what the renderer had to work around
+        self._run_in = None              # a level-3/4 heading waiting for its paragraph
 
     # -- public -------------------------------------------------------------
 
@@ -147,7 +150,7 @@ class IEEEDocxRenderer:
         _set_columns(two_col, S.COLUMN_COUNT, S.COLUMN_GAP)
 
         self._abstract_and_index_terms()
-        for section in self.paper.sections:
+        for section in self._ordered_sections():
             self._section(section)
         self._references()
 
@@ -186,19 +189,56 @@ class IEEEDocxRenderer:
         _set_font(_add(p, title), S.TITLE_SIZE)
 
         if self.paper.authors:
-            p = _paragraph(self.doc, align=WD_ALIGN_PARAGRAPH.CENTER)
-            _set_font(_add(p, ", ".join(self.paper.authors)), S.AUTHOR_SIZE)
+            shown = self._author_block()
         else:
+            shown = set()
             self.notes.append("No authors found.")
 
-        for i, affiliation in enumerate(self.paper.affiliations):
-            last = i == len(self.paper.affiliations) - 1
+        # affiliations not printed under any author (none linked, or e-mail lines)
+        rest = [a for i, a in enumerate(self.paper.affiliations) if i not in shown]
+        for i, affiliation in enumerate(rest):
+            last = i == len(rest) - 1
             p = _paragraph(self.doc, align=WD_ALIGN_PARAGRAPH.CENTER,
                            after=S.AUTHOR_BLOCK_SPACE_AFTER if last else 0)
             _set_font(_add(p, affiliation), S.AFFILIATION_SIZE, italic=True)
+        if self.paper.authors and not rest:
+            spacer = _paragraph(self.doc, after=0)
+            spacer.paragraph_format.space_after = S.AUTHOR_BLOCK_SPACE_AFTER
 
         if not self.paper.affiliations:
             self.doc.paragraphs[-1].paragraph_format.space_after = S.AUTHOR_BLOCK_SPACE_AFTER
+
+    def _author_block(self) -> set:
+        """TTL-06: the IEEE author block - every author in a column of their own,
+        their affiliation(s) in italics underneath, up to three authors per row.
+        Returns the indexes of the affiliations it printed."""
+        authors = self.paper.authors
+        links = self.paper.author_affiliations
+        if len(links) != len(authors):
+            links = [[] for _ in authors]
+        per_row = min(S.AUTHORS_PER_ROW, len(authors))
+        rows = (len(authors) + per_row - 1) // per_row
+        table = self.doc.add_table(rows=rows, cols=per_row)
+        table.alignment = WD_TABLE_ALIGNMENT.CENTER
+        width = S.PAGE_WIDTH - S.MARGIN_LEFT - S.MARGIN_RIGHT
+        shown: set = set()
+        for i, name in enumerate(authors):
+            cell = table.cell(i // per_row, i % per_row)
+            cell.width = width // per_row
+            p = cell.paragraphs[0]
+            p.alignment = WD_ALIGN_PARAGRAPH.CENTER
+            p.paragraph_format.space_before = Pt(4) if i >= per_row else 0
+            _set_font(_add(p, name), S.AUTHOR_SIZE)
+            for index in links[i]:
+                if 0 <= index < len(self.paper.affiliations):
+                    q = cell.add_paragraph()
+                    q.alignment = WD_ALIGN_PARAGRAPH.CENTER
+                    _set_font(_add(q, self.paper.affiliations[index]), S.AFFILIATION_SIZE,
+                              italic=True)
+                    shown.add(index)
+        # an uneven last row: centre it by merging the empty cells away is not
+        # possible in Word, so the empty cells simply stay blank
+        return shown
 
     # -- abstract and index terms -------------------------------------------
 
@@ -209,7 +249,7 @@ class IEEEDocxRenderer:
         if self.paper.abstract:
             _set_font(_add(p, self.paper.abstract), S.ABSTRACT_SIZE, bold=True)
         else:
-            run = _add(p, "[Abstract missing - will be generated in Step 5.]")
+            run = _add(p, "[Abstract missing - the author should add a 150-250 word abstract.]")
             _set_font(run, S.ABSTRACT_SIZE, bold=True)
             run.font.color.rgb = PLACEHOLDER_COLOUR
             self.notes.append("Abstract missing - placeholder inserted.")
@@ -217,12 +257,13 @@ class IEEEDocxRenderer:
         p = _paragraph(self.doc, after=S.HEADING1_SPACE_BEFORE)
         _set_font(_add(p, S.INDEX_TERMS_LABEL), S.ABSTRACT_SIZE, bold=True, italic=True)
         if self.paper.keywords:
-            # IEEE: index terms in lower case except proper nouns and acronyms.
-            # We keep the author's casing - changing "CT" to "ct" would be wrong.
+            # ABS-07/ABS-08: alphabetical, lower case except acronyms and proper
+            # nouns - and only the first word of the list is capitalised.
             terms = ", ".join(self.paper.keywords)
+            terms = terms[:1].upper() + terms[1:]
             _set_font(_add(p, terms), S.ABSTRACT_SIZE, bold=True)
         else:
-            run = _add(p, "[Index terms missing - will be generated in Step 5.]")
+            run = _add(p, "[Index terms missing - the author should add 3-5 keywords.]")
             _set_font(run, S.ABSTRACT_SIZE, bold=True)
             run.font.color.rgb = PLACEHOLDER_COLOUR
             self.notes.append("Index terms missing - placeholder inserted.")
@@ -246,11 +287,32 @@ class IEEEDocxRenderer:
             _set_font(_add(p, f"{section.ieee_number}. {section.ieee_heading}"),
                       S.HEADING_SIZE, italic=True)
         else:
-            # "1) Name:" in italics, indented like a paragraph.
+            # HDG-03 / HDG-04: "1) Name:" (level 3) or "a) Name:" (level 4) in
+            # italics, RUN INTO the first paragraph of the section. Level 4 is
+            # indented further. If the section starts with no paragraph, the
+            # heading stands on its own line.
+            label = f"{section.ieee_number} {section.ieee_heading}:"
+            first = next((e for e in section.elements), None)
+            if first is not None and first.kind == "paragraph":
+                self._run_in = (label, section.level)
+                return
+            indent = S.BODY_FIRST_LINE_INDENT * (2 if section.level >= 4 else 1)
             p = _paragraph(self.doc, align=WD_ALIGN_PARAGRAPH.LEFT,
-                           first_line=S.BODY_FIRST_LINE_INDENT, keep_with_next=True)
-            _set_font(_add(p, f"{section.ieee_number} {section.ieee_heading}:"),
-                      S.HEADING_SIZE, italic=True)
+                           first_line=indent, keep_with_next=True)
+            _set_font(_add(p, label), S.HEADING_SIZE, italic=True)
+
+    def _ordered_sections(self) -> List[Section]:
+        """ACK-02: the main sections first, then appendices, then the
+        Acknowledgment (References follow). Subsections stay with their parent."""
+        groups: List[List[Section]] = []
+        for s in self.paper.sections:
+            if s.level == 1 or not groups:
+                groups.append([s])
+            else:
+                groups[-1].append(s)
+        rank = {"appendix": 1, "acknowledgment": 2}
+        groups.sort(key=lambda g: rank.get(g[0].ieee_slot, 0))     # stable: keeps author order
+        return [s for g in groups for s in g]
 
     def _section(self, section: Section) -> None:
         self._heading(section)
@@ -267,11 +329,16 @@ class IEEEDocxRenderer:
                 self._code(element.text)
             elif element.kind == "math_region":
                 # A display equation the PDF stored as scattered symbols. It
-                # cannot be rebuilt from text, so it will be copied from the
-                # source PDF as an image in Step 6. Never print the scraps.
-                number = re.search(r"\((\d{1,3})\)", element.text)
-                label = f"Equation ({number.group(1)})" if number else "Display equation"
-                _placeholder(self.doc, f"{label} - copied from the source PDF in Step 6")
+                # cannot be rebuilt from text, so Step 6 copied it from the
+                # source PDF as a picture. Never print the scraps.
+                if element.image and os.path.exists(element.image):
+                    p = _paragraph(self.doc, align=WD_ALIGN_PARAGRAPH.CENTER,
+                                   before=S.CAPTION_SPACE_BEFORE, after=S.CAPTION_SPACE_BEFORE)
+                    self._picture(p, element.image)
+                else:
+                    number = re.search(r"\((\d{1,3})\)", element.text)
+                    label = f"Equation ({number.group(1)})" if number else "Display equation"
+                    _placeholder(self.doc, f"{label} - could not be recovered from the source")
             elif element.kind == "caption":
                 self._caption(element)
             previous = element.kind
@@ -291,6 +358,13 @@ class IEEEDocxRenderer:
                 r_fonts.set(qn(attr), S.CODE_FONT)
 
     def _body_paragraph(self, text: str, indent: bool = True) -> None:
+        run_in, self._run_in = self._run_in, None
+        if run_in:                                   # HDG-03 / HDG-04 run-in heading
+            label, level = run_in
+            p = _paragraph(self.doc, first_line=S.BODY_FIRST_LINE_INDENT * (2 if level >= 4 else 1))
+            _set_font(_add(p, label + " "), S.HEADING_SIZE, italic=True)
+            _set_font(_add(p, text), S.BODY_SIZE)
+            return
         p = _paragraph(self.doc, first_line=S.BODY_FIRST_LINE_INDENT if indent else 0)
         _set_font(_add(p, text), S.BODY_SIZE)
 
@@ -326,29 +400,62 @@ class IEEEDocxRenderer:
 
         kind, number, rest = match.group(1).lower(), match.group(2), match.group(3).strip()
         rest = rest.rstrip(".")
+        has_image = bool(element.image) and os.path.exists(element.image)
 
         if kind.startswith("fig"):
-            if element.image and os.path.exists(element.image):
-                # A real image came with the content (e.g. from Member 1's figure
-                # repository): insert it at the full width of the column.
+            # IEEE: the figure first, its caption BELOW it
+            if has_image:
                 p = _paragraph(self.doc, align=WD_ALIGN_PARAGRAPH.CENTER,
                                before=S.CAPTION_SPACE_BEFORE, keep_with_next=True)
-                p.add_run().add_picture(element.image, width=S.COLUMN_WIDTH)
+                self._picture(p, element.image)
             else:
-                _placeholder(self.doc, f"Figure {number} image - placed in Step 6")
+                _placeholder(self.doc, f"Figure {number} image - not found in the source")
             p = _paragraph(self.doc, align=WD_ALIGN_PARAGRAPH.CENTER,
                            before=S.CAPTION_SPACE_BEFORE, after=S.CAPTION_SPACE_AFTER)
             _set_font(_add(p, f"{S.FIGURE_LABEL} {number}. "), S.CAPTION_SIZE)
             _set_font(_add(p, f"{rest}."), S.CAPTION_SIZE)
+        elif kind == "algorithm":
+            # caption line, then the algorithm box exactly as in the source
+            p = _paragraph(self.doc, align=WD_ALIGN_PARAGRAPH.LEFT,
+                           before=S.CAPTION_SPACE_BEFORE, keep_with_next=True)
+            _set_font(_add(p, f"{S.ALGORITHM_LABEL} {number}. "), S.CAPTION_SIZE, bold=True)
+            _set_font(_add(p, rest), S.CAPTION_SIZE)
+            if has_image:
+                p = _paragraph(self.doc, align=WD_ALIGN_PARAGRAPH.CENTER,
+                               after=S.CAPTION_SPACE_AFTER)
+                self._picture(p, element.image)
+            else:
+                _placeholder(self.doc, f"Algorithm {number} - not found in the source")
         else:
+            # IEEE: "TABLE II" and its title in small caps ABOVE the table
             roman = number if not number.isdigit() else to_roman(int(number))
             p = _paragraph(self.doc, align=WD_ALIGN_PARAGRAPH.CENTER,
                            before=S.CAPTION_SPACE_BEFORE, keep_with_next=True)
             _set_font(_add(p, f"{S.TABLE_LABEL} {roman}"), S.CAPTION_SIZE)
             p = _paragraph(self.doc, align=WD_ALIGN_PARAGRAPH.CENTER, keep_with_next=True)
             _set_font(_add(p, rest), S.CAPTION_SIZE, small_caps=True)
-            _placeholder(self.doc, f"Table {roman} content - placed in Step 6")
+            if has_image:
+                p = _paragraph(self.doc, align=WD_ALIGN_PARAGRAPH.CENTER,
+                               before=S.CAPTION_SPACE_BEFORE)
+                self._picture(p, element.image)
+            else:
+                _placeholder(self.doc, f"Table {roman} content - not found in the source")
             self.doc.paragraphs[-1].paragraph_format.space_after = S.CAPTION_SPACE_AFTER
+
+    def _picture(self, paragraph, path: str) -> None:
+        """Insert an image at its natural size, but never wider than a column.
+
+        Images cropped from the PDF are rendered at 200 dpi, so their natural
+        width in inches is pixels / 200. A small equation stays small; a big
+        figure is shrunk to fit the 3.5-inch column.
+        """
+        try:
+            import pymupdf
+            natural = Emu(int(pymupdf.Pixmap(path).width / 200 * 914400))
+            width = min(natural, S.COLUMN_WIDTH)
+        except Exception:
+            width = S.COLUMN_WIDTH
+        paragraph.add_run().add_picture(path, width=width)
 
     # -- references ---------------------------------------------------------
 

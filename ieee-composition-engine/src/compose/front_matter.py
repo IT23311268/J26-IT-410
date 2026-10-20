@@ -30,16 +30,71 @@ from collections import Counter
 from typing import List
 
 from ..models import StructuredPaper
+from ..rules import ieee_rules as R
+from ..structure.ieee_mapper import _smart_title
 from . import grounding
 from .llm import BaseLLM, LLMUnavailable
 
-ABSTRACT_MIN, ABSTRACT_MAX = 150, 250
+ABSTRACT_MIN, ABSTRACT_MAX = R.ABSTRACT_WORDS          # rule ABS-03
 
 STOPWORDS = set("""a an and are as at be been being but by can could did do does for from had has
 have how in into is it its may might more most no not of on or our over such than that the their
 them then there these they this those through to under up via was we were what when where which
 while who will with within without would using use used based new paper approach method results per vs
 study propose proposed show shows work also each one two three first however both different""".split())
+
+
+# ---------------------------------------------------------------------------
+# Title, authors and abstract clean-up  (TTL-01, TTL-02, TTL-03, ABS-04)
+# ---------------------------------------------------------------------------
+
+INVITED = re.compile(r"\s*\(invited( paper)?\)\s*", re.I)
+JOINED_INITIALS = re.compile(r"\b([A-Z]\.)(?=[A-Z]\.)")
+ABSTRACT_NUMERIC_CITE = re.compile(r"\s*\[\d+(?:\s*[,–-]\s*\d+)*\](?:,\s*\[\d+\])*")
+ABSTRACT_PAREN_CITE = re.compile(
+    r"\s*\((?=[^()]*[A-Za-z])[^()]*?\b(?:19|20)\d{2}[a-z]?(?:;[^()]*)?\)")
+ABSTRACT_YEAR_AFTER_NAME = re.compile(r"(?<=et al\.)\s*\((?:19|20)\d{2}[a-z]?\)")
+
+
+def title_is_ieee_case(title: str) -> bool:
+    letters = [c for c in title if c.isalpha()]
+    return bool(letters) and not (title.isupper() and len(letters) > 3) \
+        and not INVITED.search(title)
+
+
+def clean_abstract(text: str) -> tuple:
+    """ABS-04: remove citations from an abstract. Returns (text, how many removed)."""
+    total = 0
+    for pattern in (ABSTRACT_NUMERIC_CITE, ABSTRACT_YEAR_AFTER_NAME, ABSTRACT_PAREN_CITE):
+        text, n = pattern.subn("", text)
+        total += n
+    return re.sub(r"\s+([.,;:])", r"\1", text).strip(), total
+
+
+def abstract_citations(text: str) -> int:
+    return clean_abstract(text)[1]
+
+
+def apply_front_matter_rules(paper: StructuredPaper) -> List[str]:
+    report: List[str] = []
+    if paper.title:
+        new = INVITED.sub(" ", paper.title).strip()                  # TTL-02
+        if new.isupper() and sum(c.isalpha() for c in new) > 3:      # TTL-01
+            new = _smart_title(new.lower())
+        if new != paper.title:
+            report.append("Title: put into IEEE title case (rule TTL-01/TTL-02).")
+            paper.title = new
+    fixed = [JOINED_INITIALS.sub(r"\1 ", a) for a in paper.authors]   # TTL-03
+    if fixed != paper.authors:
+        report.append("Authors: a space added between initials, \"J. K. Smith\" (rule TTL-03).")
+        paper.authors = fixed
+    if paper.abstract:
+        cleaned, removed = clean_abstract(paper.abstract)             # ABS-04
+        if removed:
+            paper.abstract = cleaned
+            report.append(f"Abstract: {removed} citation(s) removed - IEEE abstracts contain "
+                          "no citations (rule ABS-04).")
+    return report
 
 
 # ---------------------------------------------------------------------------

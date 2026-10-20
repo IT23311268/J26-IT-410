@@ -221,6 +221,10 @@ def read_pdf(path: str) -> ParsedDocument:
         page_count=doc.page_count,
     )
 
+    if doc.page_count:
+        parsed.page_width = round(doc[0].rect.width, 1)
+        parsed.page_height = round(doc[0].rect.height, 1)
+
     for page_index, page in enumerate(doc, start=1):
         # "rawdict" gives every letter with its exact position (see _rebuild_text)
         page_dict = page.get_text("rawdict")

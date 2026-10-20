@@ -7,8 +7,11 @@ Runs the stages built so far:
     stage 3  map       - match the author's sections onto the IEEE skeleton
     stage 5  compose   - IEEE references and citations, wording rules, index terms,
                          abstract (Gemini, checked), optional polish
+    stage 6  visuals   - place figures/tables after their first mention, crop
+                         them (and broken equations) from the PDF as images
     stage 4  render    - write the two-column IEEE Word document
-(Stage 5 runs before stage 4: the text is finished first, then printed.)
+    score    evaluate  - IEEE compliance score, before vs. after
+(Stages 5 and 6 run before stage 4: the content is finished first, then printed.)
 
 Input can be a paper (.pdf / .docx) OR a verified content package (.json) -
 the format the other agents in the group pipeline hand over.
@@ -24,14 +27,11 @@ Usage:
 from __future__ import annotations
 
 import argparse
-import os
 import sys
 import textwrap
 
-from src.compose import compose, make_llm
-from src.ingest import PackageError, load_document, read_package
-from src.render import render_docx
-from src.structure import map_to_ieee, structure_document
+from src.pipeline import PackageError, run_pipeline
+from src.render import ieee_style as S
 
 WIDTH = 78
 
@@ -194,6 +194,71 @@ def print_stage5(paper, llm) -> None:
 
 
 # ---------------------------------------------------------------------------
+# Printing stage 6 and the compliance score
+# ---------------------------------------------------------------------------
+
+def print_stage6(paper, exported) -> None:
+    banner("STAGE 6 - FIGURES, TABLES AND EQUATIONS")
+    found = paper.visual_stats or {}
+    if found.get("captions"):
+        print(f"  Visual areas found on the pages : {found['found']} of {found['captions']} captions")
+    images = ", ".join(f"{v} {k}" for k, v in exported.items() if v)
+    print(f"  Images cropped from the source  : {images or 'none'}")
+
+    report = paper.placement_report
+    if not report:
+        print("  Contextual placement            : no figures or tables to place")
+        return
+    print()
+    print(f"  {'Visual':<12} {'Placed':<44} {'distance':>12}")
+    print(f"  {'-'*12} {'-'*44} {'-'*12}")
+    for r in report:
+        before = "-" if r["distance_before"] is None else r["distance_before"]
+        after = "-" if r["distance_after"] is None else r["distance_after"]
+        print(f"  {r['label']:<12} {short(r['method'], 44):<44} {str(before):>5} -> {str(after):<4}")
+    print("  (distance = paragraphs between a visual and its first mention;")
+    print("   0 = directly after it, negative = placed BEFORE it)")
+
+    summary = paper.placement_summary
+    b, a = summary.get("before", {}), summary.get("after", {})
+    if b.get("mean_distance") is not None:
+        print()
+        print(f"  {'':<34} {'before':>8} {'after':>8}")
+        print(f"  {'Mean distance to first mention':<34} {b['mean_distance']:>8} {a['mean_distance']:>8}")
+        print(f"  {'Placed after first mention':<34} {str(b['after_first_mention']) + '%':>8} "
+              f"{str(a['after_first_mention']) + '%':>8}")
+        print(f"  {'Directly after first mention':<34} {str(b['adjacent']) + '%':>8} "
+              f"{str(a['adjacent']) + '%':>8}")
+
+
+def print_compliance(report) -> None:
+    banner("IEEE COMPLIANCE SCORE")
+    print()
+    print(f"  {'Check':<44} {'rules':<16} {'before':>7} {'after':>7}")
+    print(f"  {'-'*44} {'-'*16} {'-'*7} {'-'*7}")
+    group = None
+    for c in report.checks:
+        if c.group != group:
+            group = c.group
+            print(f"  {group}")
+        fmt = lambda v: "n/a" if v is None else f"{round(v * 100)}%"
+        rules = short(",".join(c.rules), 16)
+        name = c.name if c.scored else c.name + " *"
+        print(f"    {short(name, 42):<42} {rules:<16} {fmt(c.before):>7} {fmt(c.after):>7}")
+    print(f"  {'-'*44} {'-'*16} {'-'*7} {'-'*7}")
+    before = "n/a" if report.before_score is None else f"{report.before_score}%"
+    after = "n/a" if report.after_score is None else f"{report.after_score}%"
+    print(f"  {'OVERALL':<61} {before:>7} {after:>7}")
+    print("  * reported only, not in the score. Rule IDs: see src/rules/ieee_rules.py")
+    weak = [c for c in report.checks if c.after is not None and c.after < 1]
+    if weak:
+        print()
+        print("  Not yet fully compliant:")
+        for c in weak:
+            print(f"    - {c.name} ({', '.join(c.rules)}): {c.after_reason}")
+
+
+# ---------------------------------------------------------------------------
 
 def main() -> int:
     # Windows terminals default to an old text encoding that cannot print
@@ -212,77 +277,60 @@ def main() -> int:
                         help="do not use Gemini; rules only")
     parser.add_argument("--polish", action="store_true",
                         help="let Gemini reword paragraphs (every change is checked)")
+    parser.add_argument("--paper", default="letter", choices=["letter", "a4"],
+                        help="paper size from the IEEE rulebook (rule LAY-01): letter or a4")
     args = parser.parse_args()
 
-    os.makedirs(args.outdir, exist_ok=True)
-    stem = os.path.splitext(os.path.basename(args.input_file))[0]
-    lines_path = os.path.join(args.outdir, f"{stem}_stage2_labelled_lines.json")
-    paper_path = os.path.join(args.outdir, f"{stem}_ieee_paper.json")
-    saved = []
+    def show(stage: str, r) -> None:
+        """Called by the pipeline after each stage - prints that stage."""
+        if stage == "ingest" and r.is_package:
+            banner("STAGES 1-2 - VERIFIED CONTENT PACKAGE RECEIVED")
+            print(f"  File     : {r.input_path}")
+            print(f"  Title    : {short(r.paper.title, 60)}")
+            print(f"  Sections : {len(r.paper.sections)}   "
+                  f"References: {len(r.paper.references)}")
+        elif stage == "ingest":
+            print_stage1(r.source_doc)
+        elif stage == "structure" and not r.is_package:
+            print_labelled_lines(r.source_doc, args.lines)
+            print_structure(r.paper)
+        elif stage == "map":
+            print_stage3(r.paper)
+        elif stage == "compose":
+            print_stage5(r.paper, r.llm)
+        elif stage == "visuals":
+            print_stage6(r.paper, r.exported)
+        elif stage == "render":
+            banner("STAGE 4 - IEEE WORD DOCUMENT")
+            print(f"  Written to : {r.docx_path}")
+            print(f"  Layout     : {S.PAPER.name}, two columns, {S.FONT}, IEEE margins "
+                  "(values from src/rules/ieee_rules.py)")
+            if r.render_notes:
+                print()
+                print("  Notes:")
+                for note in r.render_notes:
+                    for i, line in enumerate(textwrap.wrap(note, WIDTH - 8)):
+                        print(("    - " if i == 0 else "      ") + line)
+        elif stage == "score":
+            print_compliance(r.compliance)
 
-    if args.input_file.lower().endswith(".json"):
-        # Route B: verified content handed over by the other agents (TAF task 1)
-        if not os.path.exists(args.input_file):
-            print(f"\n  ERROR: No such file: {args.input_file}\n")
-            return 1
-        try:
-            paper = read_package(args.input_file)
-        except PackageError as error:
-            print(f"\n  ERROR: {error}\n")
-            return 1
-        banner("STAGES 1-2 - VERIFIED CONTENT PACKAGE RECEIVED")
-        print(f"  File     : {args.input_file}")
-        print(f"  Title    : {short(paper.title, 60)}")
-        print(f"  Sections : {len(paper.sections)}   "
-              f"References: {len(paper.references)}")
-    else:
-        # Route A: read the paper itself (stand-in for Member 1's ingestion)
-        try:
-            doc = load_document(args.input_file)
-        except (FileNotFoundError, ValueError) as error:
-            print(f"\n  ERROR: {error}\n")
-            return 1
-        print_stage1(doc)
-        paper = structure_document(doc)          # stage 2: labels + rebuild
-        print_labelled_lines(doc, args.lines)
-        print_structure(paper)
-        doc.to_json(lines_path)
-        saved.append((lines_path, "every line with its label"))
-
-    paper = map_to_ieee(paper)                   # stage 3: IEEE skeleton
-    print_stage3(paper)
-
-    llm = make_llm(offline=args.offline)         # stage 5: composition
-    paper = compose(paper, llm, polish=args.polish)
-    print_stage5(paper, llm)
-
-    paper.to_json(paper_path)
-    saved.append((paper_path, "the finished paper, as data"))
-
-    # stage 4: the IEEE Word document
-    docx_path = os.path.join(args.outdir, f"{stem}_IEEE.docx")
+    # All the stages live in src/pipeline.py - the web page (app.py) uses the same code.
     try:
-        render_notes = render_docx(paper, docx_path)
-    except PermissionError:
-        print(f"\n  ERROR: cannot write {docx_path}")
+        result = run_pipeline(args.input_file, outdir=args.outdir, offline=args.offline,
+                              polish=args.polish, on_stage=show, paper_size=args.paper)
+    except (FileNotFoundError, ValueError, PackageError) as error:
+        print(f"\n  ERROR: {error}\n")
+        return 1
+    except PermissionError as error:
+        print(f"\n  ERROR: cannot write {error.filename or 'the Word file'}")
         print("  Is it open in Word? Close it and run the command again.\n")
         return 1
 
-    banner("STAGE 4 - IEEE WORD DOCUMENT")
-    print(f"  Written to : {docx_path}")
-    print("  Layout     : US Letter, two columns, Times New Roman, IEEE margins")
-    if render_notes:
-        print()
-        print("  Notes:")
-        for note in render_notes:
-            for i, line in enumerate(textwrap.wrap(note, WIDTH - 8)):
-                print(("    - " if i == 0 else "      ") + line)
-
     print()
     print("  Saved:")
-    for path, what in saved:
+    for path, what in result.saved:
         print(f"    {path}   ({what})")
-    print(f"    {docx_path}   (OPEN THIS ONE IN WORD)")
+    print(f"    {result.docx_path}   (OPEN THIS ONE IN WORD)")
     print()
     return 0
 
