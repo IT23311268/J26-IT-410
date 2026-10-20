@@ -137,18 +137,44 @@ export default function App() {
 
         <main className="main">
           <header className="masthead">
+            {/* The band names the engine. The paper's own name goes on
+                white beside its particulars, so the two fill one row
+                instead of leaving a column of empty page between. */}
             <div className="titleband">
-              <div className="inner titleblock">
-                <div>
-                  <h1>{title}</h1>
-                  <p className="pid mono">{id}</p>
-                </div>
-                <div className="particulars mono">
-                  {result.paper.page_count} pages · {result.paper.extraction_method}
-                  <br />
-                  schema {result.schema_version}
-                </div>
+              <div className="inner">
+                <h2>Layout-aware ingestion engine</h2>
+                <p>From a PDF to the structured JSON Members 2, 3 and 4 read</p>
               </div>
+            </div>
+            <div className="inner titleblock">
+              <div>
+                <h1>{title}</h1>
+                <p className="standfirst">
+                  Every stage, in the order it runs, with what each one produced
+                  from this paper.
+                </p>
+              </div>
+              <section className="docinfo" aria-label="Document information">
+                <span className="docinfo-mark" aria-hidden="true">
+                  <svg width="19" height="19" viewBox="0 0 20 20">
+                    <path d="M11.5 2.5H6a1.5 1.5 0 0 0-1.5 1.5v12A1.5 1.5 0 0 0 6 17.5h8a1.5 1.5 0 0 0 1.5-1.5V6.5z" />
+                    <path d="M11.5 2.5v4h4" />
+                    <path d="M7.5 10.5h5M7.5 13.5h3" />
+                  </svg>
+                </span>
+                <dl className="facts">
+                  <dt>File</dt>
+                  <dd className="mono">{result.paper.source_filename}</dd>
+                  <dt>Pages</dt>
+                  <dd className="mono">{result.paper.page_count}</dd>
+                  <dt>Method</dt>
+                  <dd className="mono">{result.paper.extraction_method}</dd>
+                  <dt>Schema</dt>
+                  <dd className="mono">{result.schema_version}</dd>
+                  <dt>Id</dt>
+                  <dd className="mono">{id}</dd>
+                </dl>
+              </section>
             </div>
             <div className="inner">
               <Headline result={result} baseline={baseline} />

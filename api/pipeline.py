@@ -702,6 +702,372 @@ body { padding-left: 248px; color: #18213a; background: var(--dashboard-bg); }
   .masthead h1 { font-size: 25px; }
   .titleblock > div:first-child { padding: 20px; }
 }
+
+/* ==============================================================
+   REFERENCE DASHBOARD / PRESENTATION-ONLY PIPELINE STYLING
+   This is all applied only on /pipeline/{paper_id}.
+   Header, sidebar, dynamic metadata, real metrics and stage previews.
+   =============================================================== */
+:root { --paper:#f7f9fd; --sheet:#fff; --ink:#111c37; --ink-soft:#52647e;
+        --rule:#e4ebf5; --shade:#f8faff; --r:13px;
+        --brand:#087f5b; --brand-ink:#087f5b; --brand-wash:#e3f3ed; }
+html { scroll-behavior:smooth; }
+body { padding-left:284px; background:#f7f9fd; color:#16213e; font-size:14px; line-height:1.5; }
+/* Reference: a wide navy bar spanning the entire viewport ABOVE sidebar. */
+.dashboard-topbar {
+  position:relative; z-index:24; margin-left:-284px; width:calc(100% + 284px);
+  min-height:78px; display:flex; align-items:center; justify-content:space-between;
+  gap:30px; padding:13px 34px 13px 24px;
+  background:#16213e; color:#fff;
+  box-shadow:0 3px 16px rgba(22,33,62,.08);
+}
+.topbar-identity { display:flex; align-items:center; gap:18px; color:#fff; text-decoration:none; min-width:0; }
+.topbar-logo { width:49px; height:49px; flex:0 0 auto; display:grid; place-items:center;
+  background:linear-gradient(135deg,#67a0ff,#1b62ee); border:1px solid rgba(255,255,255,.15);
+  border-radius:12px; color:white; box-shadow:0 5px 13px rgba(23,70,155,.25); }
+.topbar-copy { display:flex; flex-direction:column; gap:1px; }
+.topbar-copy strong { font-size:21px; font-weight:700; letter-spacing:-.02em; line-height:1.2; color:#fff; }
+.topbar-copy small { font-size:12px; color:#dbe5fa; line-height:1.45; }
+.topbar-links { display:flex; align-items:center; gap:27px; }
+.topbar-links a { display:flex; align-items:center; gap:9px; text-decoration:none;
+  color:#f5f7fd; font-size:14px; font-weight:550; white-space:nowrap; padding:5px 0; }
+.topbar-links a:hover { color:#a8d3ff; }
+.topbar-links svg { width:18px; height:18px; stroke-linecap:round; stroke-linejoin:round; }
+.topbar-avatar { display:grid; place-items:center; width:42px; height:42px; border-radius:50%;
+  color:#fff; font-weight:700; background:linear-gradient(140deg,#ca72e4,#8643bc); }
+/* The only rail affected is the one on this page. */
+.apprail { top:78px; width:284px; padding:17px 18px; background:#fff;
+  border-right:1px solid #e5ecf5; box-shadow:none; }
+.apprail .top { margin:0 0 16px; padding:8px 14px 15px; border:0; color:#14213e; }
+.apprail .top b { font-size:16px; font-weight:700; }
+.apprail .top svg { width:22px; height:22px; color:#16213e; }
+.apprail a:not(.top) { font-size:14px; padding:10px 13px; border-radius:9px; color:#52647e; }
+.apprail a[aria-current="page"] { background:#e3f3ed; color:#087f5b; }
+.apprail .nest { margin-left:25px; padding-left:12px; border-left:1px solid #dbe5f1; }
+.rail { margin-top:0; }
+.rail a { font-size:13px; line-height:1.3; padding:9px 10px; border-radius:0 8px 8px 0; }
+.rail a[aria-current="true"] { background:#e8f6f0; color:#087f5b; border-left-color:#087f5b; }
+.rail a .n { color:#536c8b; min-width:20px; }
+.apprail .foot { border-color:#e5ecf5; }
+/* title / metadata block: no unnecessary title card or empty white space */
+.masthead { background:transparent; padding:16px 30px 14px; border:0; }
+.masthead .inner { max-width:1480px; }
+.titleblock { display:grid; grid-template-columns:minmax(0,1fr) minmax(300px,345px);
+  align-items:center; gap:22px; margin:0 0 16px; }
+.titleblock > div.report-intro:first-child { min-height:0; padding:6px 4px 4px 2px; border:0; border-radius:0;
+  background:transparent; box-shadow:none; display:block; }
+.masthead h1 { font-size:clamp(25px,2.55vw,35px); font-weight:760; line-height:1.18;
+  letter-spacing:-.035em; color:#16213e; max-width:34ch; overflow-wrap:anywhere; }
+.standfirst { color:#516685; font-size:14.5px; line-height:1.65; max-width:51ch; margin-top:11px; }
+.document-card { background:#fff; border:1px solid #e3ebf5; border-radius:13px;
+  box-shadow:0 3px 15px rgba(21,35,65,.045); padding:12px 18px; align-self:center; height:auto; }
+.document-card__heading { margin-bottom:7px; gap:10px; }
+.document-card__icon { width:35px; height:35px; border-radius:9px; background:#e3f3ed; }
+.document-card__icon svg { fill:none; stroke:#087f5b; stroke-width:1.7; }
+.document-card__heading h2 { font-size:14px; color:#16213e; }
+.facts { grid-template-columns:62px minmax(0,1fr); column-gap:10px; row-gap:4px;
+  padding:0; margin:0; font-size:12px; line-height:1.4; }
+.facts dt { color:#61718b; }
+.facts dd { color:#16213e; font-size:12px; overflow-wrap:anywhere; }
+/* Six equal KPI cells matching reference design */
+.headline { display:grid; grid-template-columns:repeat(6,minmax(0,1fr));
+  border:1px solid #e4ebf5; border-radius:13px; overflow:hidden; gap:0;
+  background:#fff; box-shadow:0 3px 12px rgba(22,33,62,.04); }
+.headline > div { background:#fff; box-shadow:none; border:0; border-radius:0;
+  padding:17px 18px 19px; min-height:106px; justify-content:center; }
+.headline > div + div { border:0; border-left:1px solid #e4ebf5; padding-left:18px; }
+.headline b { font-size:clamp(20px,2.45vw,32px); font-weight:750; color:#16213e; }
+.headline .good b { color:#1768ce; }
+.headline .plain b { color:#62718a; font-weight:620; }
+.headline span { font-size:11.5px; line-height:1.4; color:#63748c; margin-top:8px; }
+/* Stage cards */
+.layout { max-width:1540px; margin:auto; padding:0 30px 80px; }
+.stage { border:1px solid #e4ebf5; border-radius:13px; padding:14px 22px;
+  background:#fff; box-shadow:0 3px 12px rgba(22,33,62,.035);
+  scroll-margin-top:18px; }
+.stage + .stage { margin-top:14px; }
+.stage header { align-items:center; gap:15px; }
+.stage .no { width:42px; height:42px; min-width:42px; font-size:22px; border-radius:10px;
+  background:#e2f2ec; color:#087f5b; }
+.stage header h2 { font-size:19px; color:#17213c; font-weight:730; }
+.stage .lede { font-size:13px; line-height:1.55; color:#61728d;
+  margin:4px 0 0 57px; max-width:100ch; }
+.stage .out { margin:11px 0 0 0; }
+.filerow { background:#fbfcff; border:1px solid #e5ecf5; border-radius:10px;
+  display:flex; align-items:center; flex-wrap:wrap; gap:15px 28px; padding:10px 15px; }
+.filerow b { font-size:13.5px; flex:0 1 235px; min-width:0; color:#18213a; }
+.filerow span { font-size:12.5px; color:#61718b; }
+.pdf-file-icon { flex:0 0 auto; display:grid; place-items:center; width:36px; height:36px;
+  border-radius:8px; background:#ffe7e9; color:#e94d60!important; }
+/* Stage 2: measured run statistics left, original thumbnails right. */
+.page-showcase { display:grid; grid-template-columns:minmax(0,1.55fr) minmax(250px,.85fr);
+  gap:21px; align-items:stretch; }
+.page-stat-grid { display:grid; grid-template-columns:repeat(4,minmax(0,1fr));
+  border:1px solid #e4ebf5; border-radius:10px; overflow:hidden; }
+.page-stat-grid > div { border-left:1px solid #e4ebf5; padding:17px 13px; min-width:0;
+  display:flex; align-items:center; }
+.page-stat-grid > div:first-child { border-left:0; }
+.page-stat-grid .readout b { font-size:clamp(15px,1.7vw,24px); color:#1768ce;
+  overflow-wrap:anywhere; }
+.page-stat-grid .readout span { font-size:11.5px; }
+.page-preview { border-radius:10px; min-width:0; overflow:hidden; }
+.page-preview .strip { display:flex; gap:12px; height:128px; padding:1px 4px; }
+.page-preview .strip a { flex:0 0 auto; }
+.page-preview .strip img { height:100px; max-width:100%; border-radius:8px; border:1px solid #e4ebf5; }
+.page-preview .note { font-size:11px; margin:0; }
+/* Stage 3: claim/counts on left, visual inspection on right. */
+.region-showcase { display:grid; grid-template-columns:minmax(0,1.3fr) minmax(300px,1fr);
+  gap:20px; align-items:start; }
+.region-copy { min-width:0; }
+.region-copy .claim { font-size:12.5px; line-height:1.5; margin:0 0 12px;
+  border-left:3px solid #1768ce; padding:8px 10px; }
+.region-stat-grid { display:grid; grid-template-columns:repeat(2,minmax(0,1fr));
+  border:1px solid #e4ebf5; border-radius:10px; }
+.region-stat-grid > div { padding:12px 14px; border-left:1px solid #e4ebf5; }
+.region-stat-grid > div:first-child { border-left:0; }
+.region-stat-grid .readout b { color:#1768ce; }
+.region-copy .note { font-size:11.5px; margin-top:10px; }
+.region-copy .pagelinks { margin-top:9px; }
+.region-showcase .overlay { display:grid; grid-template-columns:minmax(125px,.8fr) minmax(125px,1fr);
+  gap:15px; margin:0; align-items:start; }
+.region-showcase .region-image { max-height:180px; overflow:auto; border-radius:8px;
+  border:1px solid #e5ebf5; }
+.region-showcase .region-image img { width:100%; height:auto; max-height:none; display:block; }
+.region-showcase .tally { max-height:190px; overflow:auto; border-top:0; }
+.region-showcase .tally li { font-size:11.5px; padding:5px 0; }
+.stage .scores { border-radius:10px; }
+.stage .chunk,.stage .crops figure { border-radius:10px; }
+.note { font-size:12px; }
+@media (max-width:1370px) {
+  .page-showcase { grid-template-columns:1fr; }
+  .page-preview .strip { height:140px; }
+  .region-showcase { grid-template-columns:1fr; }
+  .headline b { font-size:clamp(18px,2.35vw,30px); }
+}
+@media (max-width:1080px) {
+  .titleblock { grid-template-columns:1fr; }
+  .document-card { max-width:none; }
+  .headline { grid-template-columns:repeat(3,minmax(0,1fr)); }
+  .headline > div:nth-child(4) { border-left:0; border-top:1px solid #e4ebf5; }
+  .headline > div:nth-child(n+5) { border-top:1px solid #e4ebf5; }
+}
+@media (max-width:900px) {
+  body { padding-left:0; }
+  .dashboard-topbar { width:100%; margin-left:0; min-height:74px; padding:12px 18px; }
+  .apprail { position:static; width:100%; height:auto; padding:9px 12px; border-right:0;
+    border-bottom:1px solid #e4ebf5; display:flex; flex-direction:row; gap:5px;
+    align-items:center; overflow-x:auto; }
+  .apprail .top { flex:0 0 auto; margin:0; padding:5px 9px; }
+  .apprail .top b { display:none; }
+  .apprail > a:not(.top) { flex:0 0 auto; white-space:nowrap; padding:8px 10px; }
+  .apprail .nest { display:none; }
+  .apprail .foot { flex:0 0 auto; margin:0; padding:0; border-top:0; }
+  .masthead { padding:22px 18px 13px; }
+  .layout { padding:0 18px 60px; }
+  .headline { grid-template-columns:repeat(3,minmax(0,1fr)); }
+  .stage { padding:19px; }
+}
+@media (max-width:640px) {
+  .dashboard-topbar { flex-direction:column; align-items:stretch; gap:10px; }
+  .topbar-logo { width:39px; height:39px; }
+  .topbar-copy strong { font-size:18px; }
+  .topbar-copy small { font-size:11px; }
+  .topbar-links { justify-content:space-between; gap:8px; }
+  .topbar-links a { font-size:11px; gap:5px; }
+  .topbar-links svg { width:14px; height:14px; }
+  .topbar-avatar { height:31px; width:31px; font-size:11px; }
+  .masthead h1 { font-size:28px; }
+  .headline { grid-template-columns:repeat(2,minmax(0,1fr)); }
+  .headline > div { padding:13px; min-height:87px; }
+  .headline > div + div { padding-left:13px; }
+  .headline > div:nth-child(2n+1) { border-left:0; }
+  .headline > div:nth-child(n+3) { border-top:1px solid #e4ebf5; }
+  .stage .lede { margin-left:0; }
+  .stage header h2 { font-size:18px; }
+  .stage .out { margin-top:12px; }
+  .page-stat-grid { grid-template-columns:repeat(2,minmax(0,1fr)); }
+  .page-stat-grid > div:nth-child(3) { border-left:0; }
+  .page-stat-grid > div:nth-child(n+3) { border-top:1px solid #e4ebf5; }
+  .region-showcase .overlay { grid-template-columns:1fr; }
+  .region-showcase .region-image { max-height:260px; }
+  .filerow { gap:9px 16px; }
+  .filerow b { flex:1 1 190px; }
+}
+
+
+/* ==============================================================
+   FINISHING PASS — clean, balanced stage timeline
+   /pipeline only. No API, computation or stage-order changes.
+   =============================================================== */
+:root {
+  --ui-navy:#16213e;
+  --ui-blue:#1b65cf;
+  --ui-ink:#17243e;
+  --ui-mist:#f5f8fd;
+  --ui-line:#e4ebf5;
+  --ui-green:#067a59;
+  --ui-shadow:0 6px 24px rgba(26,48,91,.048),0 1px 3px rgba(26,48,91,.025);
+}
+body { background:linear-gradient(120deg,#f9fbff 0%,#f4f7fc 66%,#f8faff 100%); }
+.dashboard-topbar { background:#16213e; border-bottom:1px solid rgba(255,255,255,.1); }
+.topbar-logo { border-radius:12px; }
+.apprail { background:#fff; }
+.apprail a:not(.top) { transition:background .18s ease,color .18s ease; }
+.apprail a:not(.top):hover { background:#f1f6fd; }
+.apprail a[aria-current="page"] { background:#e5f4ef; }
+.rail a { transition:background .18s ease,color .18s ease; }
+.rail .last { border-top:1px solid #e7edf5; padding-top:10px; margin-top:5px; }
+.rail .last .n { font-size:0; width:20px; vertical-align:middle; }
+.rail .last .n::before { content:'⇄'; display:inline-block; font-size:18px; font-weight:700;
+  color:#476bd1; line-height:1; vertical-align:middle; }
+/* A smaller paper heading, without an oversized empty title card. */
+.masthead { padding:24px 30px 16px; }
+.titleblock { grid-template-columns:minmax(0,1fr) minmax(300px,365px);
+  gap:24px; align-items:center; margin-bottom:21px; }
+.titleblock > .report-intro:first-child { padding:10px 0 10px 3px;
+  align-self:center; }
+.report-intro::before { content:'RESEARCH DOCUMENT'; display:block; width:max-content;
+  color:#547096; font-size:11px; font-weight:740; letter-spacing:.115em;
+  margin-bottom:11px; }
+.masthead h1 { color:#16213e; font-size:clamp(24px,2.1vw,30px); line-height:1.28;
+  font-weight:770; letter-spacing:-.034em; max-width:35ch; overflow-wrap:anywhere; }
+.standfirst { font-size:13.5px; max-width:58ch; margin-top:9px;
+  line-height:1.65; color:#60718d; }
+.document-card { padding:17px 20px; border-radius:16px;
+  border:1px solid #e2e9f4; box-shadow:var(--ui-shadow); }
+.document-card__heading { margin-bottom:12px; }
+.document-card__heading h2 { font-size:15px; }
+.document-card__icon { height:37px; width:37px; border-radius:10px; }
+.facts { grid-template-columns:62px minmax(0,1fr); row-gap:6px;
+  column-gap:14px; font-size:12.5px; }
+.facts dd { font-size:12.5px; line-height:1.4; }
+/* Auto-fit means four real outputs fill the entire row; no fake blank KPIs. */
+.headline { grid-template-columns:repeat(auto-fit,minmax(148px,1fr));
+  border:1px solid #e2e9f4; border-radius:16px;
+  box-shadow:var(--ui-shadow); overflow:hidden; }
+.headline > div { min-width:0; padding:19px 20px 19px; min-height:100px;
+  box-shadow:none; border:0; background:#fff; }
+.headline > div + div { border-left:1px solid #e5ecf5; padding-left:20px; }
+.headline b { font-size:clamp(24px,2.25vw,34px); line-height:1.12; letter-spacing:-.035em; }
+.headline span { font-size:12.5px; margin-top:7px; line-height:1.4; }
+.workflow-head { margin:14px 0 15px; align-items:center; }
+.workflow-head h2 { font-size:22px; color:#182847; }
+.workflow-head p { font-size:13px; color:#6a7a92; }
+.workflow-head .count { background:#edf5ff; border-color:#d7e7fd; padding:7px 13px; }
+.layout { padding:0 30px 94px; }
+/* Sequential seven-card walkthrough; full-width cards remain in order. */
+.stage { position:relative; isolation:isolate; background:#fff;
+  border:1px solid #e2eaf4; border-radius:16px; padding:21px 26px 23px;
+  box-shadow:var(--ui-shadow); overflow:hidden; transition:border-color .2s ease,box-shadow .2s ease; }
+.stage:hover { border-color:#cbd9ed; box-shadow:0 8px 28px rgba(24,44,80,.075); }
+.stage + .stage { margin-top:17px; }
+.stage::before { content:''; position:absolute; top:21px; bottom:21px; left:0;
+  width:3px; background:#b6dfd2; border-radius:0 4px 4px 0; }
+.stage header { display:flex; align-items:center; gap:15px; min-width:0; }
+.stage .no { width:43px; height:43px; min-width:43px; background:#e4f4ee;
+  color:#087f5b; border-radius:12px; font-size:20px; font-weight:770;
+  box-shadow:inset 0 0 0 1px #d8eee5; }
+.stage header > div:last-child { flex:1; min-width:0; }
+.stage header h2 { font-size:19px; color:#16213e; font-weight:750; letter-spacing:-.015em; }
+.stage .lede { margin:6px 0 0 58px; font-size:13.5px; line-height:1.55;
+  color:#61728d; max-width:110ch; }
+.stage .out { margin:17px 0 0 58px; }
+/* The production template nests the subtitle inside the header text
+   column. Do not indent it twice away from its heading. */
+.stage header .lede { margin:6px 0 0; }
+.stage > .lede { margin:6px 0 0 58px; }
+.stage .out > * { max-width:100%; }
+.stage .filerow { padding:14px 16px; background:#f9fbff; border-radius:10px; }
+.stage .filerow b { flex:0 1 auto; font-size:13px; }
+.stage .pdf-file-icon { width:34px; height:34px; }
+.stage .page-stat-grid,.stage .region-stat-grid { background:#fcfdff; }
+.stage .page-stat-grid > div { padding:16px 14px; }
+.stage .page-stat-grid .readout b { font-size:clamp(17px,1.6vw,24px); }
+.stage .page-preview { background:#f8faff; border:1px solid #e7edf6;
+  padding:12px 14px; }
+.stage .page-preview .strip { height:126px; }
+.stage .region-image { border:1px solid #e4eaf4; }
+.stage .scores,.stage .run span,.stage .chunk { border-color:#e4ebf5; }
+.stage .claim { background:#f1f6ff; border-left-color:#286bd2; }
+/* Baseline is an evidence/quality comparison, NOT an eighth stage. */
+#ev { margin-top:27px; border:1px solid #dce5f6;
+  background:linear-gradient(106deg,#f7f9ff 0%,#ffffff 57%); }
+#ev::before { background:#7995dd; }
+#ev .no { background:#eaf0ff; color:#345bb8; box-shadow:inset 0 0 0 1px #d9e4ff; }
+#ev .no svg { width:22px; height:22px; display:block; stroke:currentColor;
+  stroke-width:1.7; fill:none; stroke-linecap:round; stroke-linejoin:round; }
+#ev .measure,#ev .side { background:#fff; }
+#ev .measures { border-radius:11px 11px 0 0; }
+#ev .facing { border-radius:0 0 11px 11px; }
+/* Helpful 'step' context without changing the source data. */
+#s1 header::after,#s2 header::after,#s3 header::after,
+#s4 header::after,#s5 header::after,#s6 header::after,#s7 header::after {
+  content:'PIPELINE STAGE'; color:#8a99b0; font-weight:690;
+  font-size:10px; letter-spacing:.09em; white-space:nowrap; margin-left:auto;
+}
+#ev header::after { content:'BASELINE COMPARISON'; color:#5878bb;
+  font-size:10px; font-weight:740; letter-spacing:.07em;
+  white-space:nowrap; margin-left:auto; }
+/* Tablet and mobile: maintain order and preserve real output readability. */
+@media (max-width:1370px) {
+  .headline { grid-template-columns:repeat(auto-fit,minmax(150px,1fr)); }
+}
+@media (max-width:1080px) {
+  .titleblock { grid-template-columns:minmax(0,1fr) minmax(265px,320px); }
+  .headline { grid-template-columns:repeat(auto-fit,minmax(180px,1fr)); }
+  .headline > div:nth-child(n) { border-top:0; }
+  .stage .page-showcase,.stage .region-showcase { grid-template-columns:1fr; }
+}
+@media (max-width:900px) {
+  .titleblock { grid-template-columns:1fr; }
+  .document-card { max-width:none; }
+  .headline { grid-template-columns:repeat(auto-fit,minmax(155px,1fr)); }
+  .headline > div:nth-child(n) { border-top:0; }
+  .masthead { padding:23px 18px 18px; }
+  .layout { padding:0 18px 64px; }
+}
+@media (max-width:640px) {
+  .titleblock { gap:14px; }
+  .report-intro::before { margin-bottom:6px; }
+  .masthead h1 { font-size:25px; }
+  .headline { grid-template-columns:repeat(2,minmax(0,1fr)); }
+  .headline > div { min-height:86px; padding:15px 14px; }
+  .headline > div + div { padding-left:14px; }
+  .headline > div:nth-child(2n+1) { border-left:0; }
+  .headline > div:nth-child(n+3) { border-top:1px solid #e5ecf5; }
+  .stage { padding:17px 15px 20px; }
+  .stage header { gap:12px; }
+  .stage .no { width:38px; height:38px; min-width:38px; font-size:18px; }
+  .stage header h2 { font-size:17.5px; }
+  .stage .lede { margin:9px 0 0; font-size:13px; }
+  .stage .out { margin:15px 0 0; }
+  .stage header::after { display:none; }
+  .filerow { gap:10px; }
+}
+/* Keep the full-width header attached to the fixed pipeline sidebar
+   while scrolling. This is presentation-only; no pipeline data changes. */
+@media (min-width:901px) {
+  .dashboard-topbar {
+    position:sticky;
+    top:0;
+    z-index:50;
+  }
+  .apprail {
+    position:fixed;
+    top:78px; /* Matches the navy header's desktop height */
+    bottom:0;
+    z-index:40;
+  }
+  /* Anchor jumps must not hide the stage heading beneath the sticky bar. */
+  .stage { scroll-margin-top:96px; }
+}
+@media (max-width:900px) {
+  /* On smaller screens the rail follows the header in normal document flow. */
+  .dashboard-topbar { position:relative; top:auto; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .stage,.rail a,.apprail a { transition:none; }
+}
 """
 
 #: Two things. The rail entry for whichever stage is on screen gets
@@ -778,9 +1144,19 @@ def _stage(key: str, number: str, title: str, lede: str, body: str) -> str:
     """One stage. The last section is not a box in the component
     diagram, so it gets no number — but it keeps the gutter, or its
     heading would sit out of line with the six above it."""
+    # Baseline comparison is unnumbered; use a visual comparison mark,
+    # not a misleading eighth step or an empty numbered badge.
+    badge = (
+        "<svg viewBox='0 0 24 24' aria-hidden='true'>"
+        "<rect x='3' y='5' width='7' height='14' rx='1.5'/>"
+        "<rect x='14' y='9' width='7' height='10' rx='1.5'/>"
+        "<path d='M16 5h5m-2.5-2.5L21 5l-2.5 2.5'/>"
+        "</svg>"
+        if key == "ev" else _e(number)
+    )
     return (
         f"<section class='stage' id='{key}'>"
-        f"<header><div class='no' aria-hidden='true'>{_e(number)}</div><div>"
+        f"<header><div class='no' aria-hidden='true'>{badge}</div><div>"
         f"<h2>{_e(title)}</h2><p class='lede'>{_e(lede)}</p></div></header>"
         f"<div class='out'>{body}</div></section>"
     )
@@ -804,6 +1180,9 @@ def _box1(result: IngestionResult, source_bytes: Optional[int]) -> str:
     pages = f"{paper.page_count} page{'s' if paper.page_count != 1 else ''}"
     return (
         "<div class='filerow'>"
+        "<span class='pdf-file-icon' aria-hidden='true'>"
+        "<svg width='24' height='24' viewBox='0 0 24 24' fill='none' stroke='currentColor' stroke-width='1.8'>"
+        "<path d='M6 2.5h8l4 4v15H6zM14 2.5v4h4M9 12h6M9 16h6'/></svg></span>"
         f"<b class='mono'>{_e(paper.source_filename)}</b>"
         f"<span>{_e(pages)}</span>"
         f"<span>{_e(_human_size(source_bytes))}</span>"
@@ -833,9 +1212,15 @@ def _box2(result: IngestionResult, pid: str) -> str:
         else ""
     )
     return (
-        f"<div class='strip'>{strip}</div>"
-        f"<p class='note mono'>{first.dpi} dpi · {first.width_px}×{first.height_px} px"
-        f" · {first.scale:.3f} px per point{more}</p>"
+        "<div class='page-showcase'>"
+        "<div class='page-stat-grid'>"
+        + _readout(len(result.pages), "pages rendered", "")
+        + _readout(f"{first.dpi} DPI", "rendering resolution", "")
+        + _readout(f"{first.width_px}×{first.height_px}", "image size (px)", "")
+        + _readout(f"{first.scale:.3f}", "pixels per point", "")
+        + "</div>"
+        + f"<div class='page-preview'><div class='strip'>{strip}</div>"
+        + f"<p class='note'>Page previews{more}</p></div></div>"
     )
 
 
@@ -884,14 +1269,19 @@ def _box3(result: IngestionResult, pid: str) -> str:
     # while the presenter is still talking, and a caption below an
     # image is read after the image — if at all.
     return (
-        "<p class='claim'>The numbered badges are <strong>reading order</strong>. "
-        "On a two-column page they run down the left column and only then cross "
-        "to the right — which is the whole difference between this and reading "
-        "the page top to bottom.</p>"
-        f"<div class='overlay'><div>{picture}"
-        f"<p class='note'>Page {(busiest or 0) + 1}, the densest page in the paper. "
-        f"Click it for full size.</p>{links}</div>"
-        f"<ul class='tally'>{tally}</ul></div>"
+        "<div class='region-showcase'><div class='region-copy'>"
+        "<p class='claim'>The numbered badges show <strong>reading order</strong>. "
+        "On two-column pages, text runs down the left column first and "
+        "then the right column.</p>"
+        "<div class='region-stat-grid'>"
+        + _readout(len(result.regions), "regions found")
+        + _readout(len(counts), "region categories")
+        + "</div>"
+        + f"<p class='note'>Page {(busiest or 0) + 1} has the most detected regions. "
+        "Select its preview to enlarge.</p>"
+        + f"{links}</div>"
+        + f"<div class='overlay'><div class='region-image'>{picture}</div>"
+        + f"<ul class='tally'>{tally}</ul></div></div>"
     )
 
 
@@ -1247,6 +1637,31 @@ def _evidence(result: IngestionResult, baseline: Optional[IngestionResult], pid:
     )
 
 
+# Pipeline-page-only brand header: does not alter ui.py or other pages.
+# All links point to routes that actually exist in this project.
+_PIPELINE_HEADER = """
+<header class='dashboard-topbar'>
+  <a href='/' class='topbar-identity' aria-label='Research Assistant home'>
+    <span class='topbar-logo' aria-hidden='true'>
+      <svg width='27' height='27' viewBox='0 0 28 28' fill='none'>
+        <rect x='6' y='4' width='16' height='20' rx='2' stroke='currentColor' stroke-width='2'/>
+        <path d='M10 10h8M10 15h7M10 20h5' stroke='currentColor' stroke-width='2' stroke-linecap='round'/>
+        <path d='M19 8h5v5' stroke='currentColor' stroke-width='2' stroke-linecap='round'/>
+      </svg>
+    </span>
+    <span class='topbar-copy'><strong>Research Assistant</strong>
+      <small>From PDF to Structured Technical Report</small></span>
+  </a>
+  <nav class='topbar-links' aria-label='Quick navigation'>
+    <a href='/'><svg viewBox='0 0 24 24' fill='none' stroke='currentColor' stroke-width='2' aria-hidden='true'><path d='m3 10 9-7 9 7v10h-6v-6H9v6H3z'/></svg>Home</a>
+    <a href='/'><svg viewBox='0 0 24 24' fill='none' stroke='currentColor' stroke-width='2' aria-hidden='true'><path d='M5 4h14v16H5zM8 8h8M8 12h8M8 16h5'/></svg>All Papers</a>
+    <a href='/docs'><svg viewBox='0 0 24 24' fill='none' stroke='currentColor' stroke-width='2' aria-hidden='true'><path d='m8 8-4 4 4 4m8-8 4 4-4 4m-3-11-2 14'/></svg>API Docs</a>
+    <span class='topbar-avatar' aria-label='Member 1'>M1</span>
+  </nav>
+</header>
+"""
+
+
 # --------------------------------------------------------------------------
 # the page
 # --------------------------------------------------------------------------
@@ -1327,14 +1742,10 @@ def render_pipeline(
         "<meta name='viewport' content='width=device-width, initial-scale=1'>"
         f"<title>{_e(title)} — ingestion pipeline</title>"
         f"<style>{_CSS}</style></head><body>"
+        f"{_PIPELINE_HEADER}"
         f"{app_rail('pipeline', paper.paper_id, nested=stage_rail)}"
-        # The engine's name sits in the brand strip this page already
-        # had; restyling it beats adding a second band above it. The
-        # paper's own name goes on white beside its particulars, so the
-        # two fill one row instead of leaving a column of empty page.
-        f"{BRAND}"
         f"<header class='masthead'><div class='inner'>"
-        f"<div class='titleblock'><div><h1>{_e(title)}</h1>"
+        f"<div class='titleblock'><div class='report-intro'><h1>{_e(title)}</h1>"
         "<p class='standfirst'>Every stage, in the order it runs, with "
         "what each one produced from this paper.</p></div>"
         "<section class='document-card' aria-labelledby='doccard'>"
@@ -1351,11 +1762,7 @@ def render_pipeline(
         # was the same four destinations twice on one screen.
         f"{_headline(result, baseline)}"
         "</div></header>"
-        f"<div class='layout'><div class='workflow-head'>"
-        "<div><h2>Pipeline walkthrough</h2>"
-        "<p>Follow the paper from upload to structured, linked research content.</p></div>"
-        "<span class='count'>7 processing stages</span></div>"
-        f"<main>{''.join(bodies)}</main></div>"
+        f"<div class='layout'><main>{''.join(bodies)}</main></div>"
         # the full-size view, which replaces opening a raw image in a
         # tab of its own with nothing in it to come back by
         "<div class='zoom' hidden role='dialog' aria-modal='true' aria-label='Full size'>"

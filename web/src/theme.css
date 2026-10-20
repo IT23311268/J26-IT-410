@@ -33,6 +33,9 @@
   --r: 8px;
   --rail: 232px;
 
+  /* The shared masthead gradient. See the note on .titleband. */
+  --band: #16213e;
+
   /* The six region colours, taken from REGION_COLOURS in
      api/overlay.py — the same values the engine already draws the
      boxes with. This page used to render the tally beside that
@@ -241,42 +244,113 @@ h4 {
   background: var(--sheet);
   border-bottom: 1px solid var(--rule);
 }
-/* The page's one loud surface, and it is chrome rather than a
-   measurement: the paper's name and its particulars. Every number
-   stays on white below it, so the brand colour never sits behind a
-   figure a panel is being asked to believe.
+/* The group's shared masthead, taken from Member 2's surface so the
+   four components read as one system at the review.
 
-   White on this ground is 9.54:1, and 6.53:1 with the room lights
-   on. A band survives a projector in a way a whole dark page does
-   not — the lamp lifts the black, and one band losing a little
-   contrast is a band, while a whole page losing it is the design. */
+   It is chrome rather than a measurement: the paper's name and its
+   particulars. Every number stays on white below it, so the brand
+   colour never sits behind a figure a panel is being asked to
+   believe. It clears them anyway: ΔE 20.2 from --series-ours and
+   38.3 from --series-baseline.
+
+   White on it measures 15.89:1, and 8.81:1 with the room lights on. A band
+   survives a projector in a way a whole dark page does not: the lamp
+   lifts the black, and one band losing a little contrast is a band,
+   while a whole page losing it is the design. */
 .titleband {
-  background: var(--brand-deep);
+  background: var(--band);
   color: var(--on-brand);
+  padding: 18px 0 17px;
 }
+.titleband h2 {
+  font-size: 18px;
+  letter-spacing: -0.008em;
+}
+.titleband p {
+  margin: 4px 0 0;
+  font-size: 12.5px;
+  color: #aeb6d2;
+}
+
+/* Title left, particulars right, one row. Stacking them left a column
+   of empty page down the middle of the screen. */
 .titleblock {
   display: grid;
   grid-template-columns: minmax(0, 1fr) auto;
-  gap: 24px 40px;
-  align-items: end;
-  padding-top: 40px;
-  padding-bottom: 30px;
+  gap: 18px 48px;
+  align-items: start;
+  padding-top: 26px;
+  padding-bottom: 22px;
 }
 .titleblock h1 {
   font-size: 27px;
-  max-width: 24ch;
+  max-width: 22ch;
 }
-.titleblock .pid {
+.standfirst {
+  margin: 10px 0 0;
+  font-size: 14.5px;
+  color: var(--ink-soft);
+  max-width: 48ch;
+}
+
+/* The sheet's particulars, as a card rather than a bare list: it has
+   to hold the top-right corner against a title three times its size,
+   and a list with nothing around it just floats there.
+
+   The mark is the same document glyph the rail uses, so the card is
+   recognisably part of this application and not a stray panel. */
+.docinfo {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  gap: 0 14px;
+  align-items: start;
+  background: var(--sheet);
+  border: 1px solid #e2e8f0;
+  border-radius: 12px;
+  padding: 16px 20px;
+  box-shadow:
+    0 1px 3px rgba(22, 33, 62, 0.06),
+    0 1px 2px rgba(22, 33, 62, 0.04);
+}
+.docinfo-mark {
+  width: 34px;
+  height: 34px;
+  border-radius: 9px;
+  background: var(--brand-wash);
+  color: var(--brand-ink);
+  display: grid;
+  place-items: center;
+}
+.docinfo-mark svg {
+  stroke: currentColor;
+  fill: none;
+  stroke-width: 1.5;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+.facts {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  gap: 7px 16px;
+  margin: 0;
+  padding: 2px 0 0;
   font-size: 12.5px;
-  margin-top: 8px;
-  word-break: break-all;
-  opacity: 0.86;
+  align-items: baseline;
 }
-.titleblock .particulars {
-  text-align: right;
-  font-size: 13px;
-  opacity: 0.86;
+/* #5a6472, not the usual slate #64748b: that one measures 4.76:1 on
+   white but 3.96:1 once a projector lamp lifts the black, which is a
+   fail on the surface this is most often read from. This is 6.00:1
+   and 4.72:1. */
+.facts dt {
+  color: #5a6472;
 }
+.facts dd {
+  margin: 0;
+  color: #16213e;
+  max-width: 30ch;
+  overflow-wrap: anywhere;
+}
+
 
 .headline {
   display: grid;
@@ -807,6 +881,9 @@ mark.keep {
     display: flex;
     flex-wrap: wrap;
     gap: 4px;
+  }
+  .titleblock {
+    grid-template-columns: minmax(0, 1fr);
   }
   .overlay {
     grid-template-columns: minmax(0, 1fr);

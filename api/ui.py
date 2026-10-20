@@ -56,6 +56,23 @@ TOKENS = """
   --series-baseline: #b8641a;
   --series-ours:     #1b4f9c;
   --r: 8px;
+
+  /* The group's shared masthead, taken from Member 2's surface so the
+     four components read as one system at the review.
+
+     It is a band and nothing else. The measurement colours stay where
+     they are: a colour that sits beside a bar has to clear that bar,
+     and this one is only ever at the top of the page, where it never
+     shares a sightline with one. It clears them anyway — ΔE 20.2 from
+     --series-ours and 38.3 from --series-baseline.
+
+     White on it measures 15.89:1, and 8.81:1 with the room lights on.
+
+     It started as the gradient Member 2's surface uses. Flat #16213e
+     sits 0.5 ΔE from that gradient's midpoint — no visible difference
+     — so the gradient bought nothing and this is the value the group
+     agreed on. */
+  --band: #16213e;
 }
 /* There is no dark theme, on purpose.
 
@@ -243,6 +260,26 @@ p  { margin: 0; max-width: 68ch; }
 
 @media (prefers-reduced-motion: reduce) {
   * { animation: none !important; transition: none !important; scroll-behavior: auto !important; }
+}
+
+/* The group's masthead. One band, shared by all four components, so a
+   panel moving between four laptops sees one system rather than four
+   student projects. See the note beside --band for why it is only
+   ever a band and never an accent. */
+.topband {
+  background: var(--band);
+  color: #ffffff;
+  padding: 18px 24px 17px;
+}
+.topband .inner { max-width: 1140px; margin: 0 auto; }
+.topband h1 { font-size: 18px; letter-spacing: -0.008em; }
+.topband p {
+  margin: 4px 0 0; font-size: 12.5px; color: #aeb6d2;
+}
+.topband .mono { color: #aab2cd; }
+@media (max-width: 720px) {
+  .topband { padding: 14px 16px 13px; }
+  .topband h1 { font-size: 16px; }
 }
 """
 
