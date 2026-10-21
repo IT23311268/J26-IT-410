@@ -271,9 +271,17 @@ def check_reference_order(paper: StructuredPaper) -> Result:
 def check_caption_style(captions: List[str]) -> Result:
     if not captions:
         return None, "no figure or table captions"
-    good = sum(1 for c in captions
-               if re.match(r"^Fig\. \d+\. ", c) or re.match(r"^TABLE [IVXL]+$", c)
-               or re.match(r"^Algorithm \d+\. ", c))
+    avoid = "|".join(R.CAPTION_AVOID_FIRST)
+
+    def ieee_form(c: str) -> bool:
+        figure = re.match(rf"^{re.escape(S.FIGURE_LABEL)} \d+\.{S.CAPTION_GAP}(.)", c)
+        if figure:                                         # FIG-02 + FIG-11
+            return figure.group(1).isupper() and not re.match(
+                rf"^{re.escape(S.FIGURE_LABEL)} \d+\.{S.CAPTION_GAP}(?:{avoid})\s", c)
+        return bool(re.match(rf"^{S.TABLE_LABEL} [IVXLC]+$", c)
+                    or re.match(rf"^{S.ALGORITHM_LABEL} \d+\. ", c))
+
+    good = sum(1 for c in captions if ieee_form(c))
     return _share(good, len(captions)), f"{good}/{len(captions)} captions in IEEE form"
 
 

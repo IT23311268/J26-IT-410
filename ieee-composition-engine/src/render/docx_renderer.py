@@ -25,7 +25,7 @@ from __future__ import annotations
 
 import os
 import re
-from typing import List
+from typing import List, Optional
 
 from docx import Document
 from docx.enum.section import WD_SECTION
@@ -33,11 +33,13 @@ from docx.enum.table import WD_TABLE_ALIGNMENT
 from docx.enum.text import WD_ALIGN_PARAGRAPH, WD_TAB_ALIGNMENT
 from docx.oxml import OxmlElement
 from docx.oxml.ns import qn
+from docx.text.paragraph import Paragraph
 from docx.shared import Pt, Emu, RGBColor
 
 from ..models import Element, Section, StructuredPaper
 from ..structure.ieee_mapper import to_roman
 from . import ieee_style as S
+from ..rubric.evidence import anchor_of, comments_by_anchor, record
 
 PLACEHOLDER_COLOUR = RGBColor(0x80, 0x80, 0x80)
 
@@ -130,11 +132,58 @@ def _placeholder(doc, text: str) -> None:
 # ---------------------------------------------------------------------------
 
 class IEEEDocxRenderer:
-    def __init__(self, paper: StructuredPaper):
+    def __init__(self, paper: StructuredPaper, annotate: bool = False):
         self.paper = paper
         self.doc = Document()
         self.notes: List[str] = []       # what the renderer had to work around
         self._run_in = None              # a level-3/4 heading waiting for its paragraph
+        # annotate=True writes a copy with every rule receipt as a margin comment;
+        # the normal run records the renderer's own receipts instead
+        self.annotate = annotate
+        self.comments = comments_by_anchor(paper) if annotate else {}
+        self._pending_anchor = None      # a run-in heading's comment waits for its paragraph
+        self._current_anchor = "document"
+
+    # -- rubric receipts and margin comments ----------------------------------
+
+    def _receipt(self, rules, where: str, before: str = "", after: str = "", note: str = "",
+                 anchor: str = "document") -> None:
+        if not self.annotate:
+            record(self.paper, rules, where, before, after, note=note, anchor=anchor)
+
+    def _comment(self, paragraph, *anchors: str) -> None:
+        """Put the receipts for these anchors in the margin next to this paragraph."""
+        if not self.annotate or paragraph is None:
+            return
+        lines = []
+        for anchor in anchors:
+            lines.extend(self.comments.pop(anchor, []))
+        runs = [r for r in paragraph.runs]
+        if lines and runs:
+            self.doc.add_comment(runs, text="\n".join(lines[:25]) +
+                                 (f"\n… and {len(lines) - 25} more" if len(lines) > 25 else ""),
+                                 author="IEEE Manuscript Engine", initials="IEEE")
+
+    def _mark(self) -> int:
+        """Where the next paragraph will go. Word keeps its section settings
+        (w:sectPr) as the LAST item, and new paragraphs are inserted before it."""
+        body = self.doc.element.body
+        return len(body) - (1 if len(body) and body[-1].tag == qn("w:sectPr") else 0)
+
+    def _first_paragraph_since(self, mark: int, prefer: Optional[str] = None):
+        """The first paragraph written since `mark` - or, with `prefer`, the first
+        one whose text matches it (a figure's caption, not its picture)."""
+        found = None
+        for child in self.doc.element.body[mark:]:
+            if child.tag != qn("w:p"):
+                continue
+            paragraph = Paragraph(child, self.doc._body)
+            if prefer is None:
+                return paragraph
+            if re.match(prefer, paragraph.text):
+                return paragraph
+            found = found or paragraph
+        return found
 
     # -- public -------------------------------------------------------------
 
@@ -150,9 +199,19 @@ class IEEEDocxRenderer:
         _set_columns(two_col, S.COLUMN_COUNT, S.COLUMN_GAP)
 
         self._abstract_and_index_terms()
-        for section in self._ordered_sections():
+        ordered = self._ordered_sections()
+        if [s.uid or id(s) for s in ordered] != [s.uid or id(s) for s in self.paper.sections]:
+            back = [s for s in ordered if s.level == 1 and s.ieee_slot in ("appendix",
+                                                                         "acknowledgment")]
+            author_order = [s.ieee_heading for s in self.paper.sections
+                            if s.level == 1 and s.ieee_slot in ("appendix", "acknowledgment")]
+            self._receipt("ACK-02", "Back matter", " → ".join(author_order + ["References"]),
+                          " → ".join([s.ieee_heading for s in back] + ["References"]),
+                          anchor=anchor_of(back[0]) if back else "document")
+        for section in ordered:
             self._section(section)
         self._references()
+        self._document_receipts()
 
         # IEEE wants the two columns on the last page to end at the same
         # height. Word does this automatically when the two-column part is
@@ -163,6 +222,36 @@ class IEEEDocxRenderer:
 
         self.doc.save(output_path)
         return self.notes
+
+    def _document_receipts(self) -> None:
+        """Rules that shape the whole layout - recorded once, with their values, each
+        pointing at the part of the manuscript it shapes."""
+        p = S.PAPER
+        self._receipt("LAY-01", "Whole document", "", f"{p.name} page")
+        self._receipt("LAY-02", "Whole document", "", f"margins {p.margin_top_in:.3g} / "
+                      f"{p.margin_bottom_in:.3g} / {p.margin_side_in:.3g} in (top/bottom/sides)")
+        self._receipt(["LAY-03", "LAY-04"], "Whole document", "",
+                      f"{S.COLUMN_COUNT} columns, {p.column_gap_in:.3g} in gap")
+        self._receipt("LAY-05", "Title and authors", "", "full page width, above the columns",
+                      anchor="front:title")
+        self._receipt("LAY-06", "Whole document", "", "justified columns", anchor="all:paragraph")
+        self._receipt("LAY-07", "Last page", "", "columns balanced by a closing section break",
+                      anchor="references")
+        self._receipt("LAY-08", "Whole document", "", "no page numbers, headers or footers")
+        self._receipt("TYP-01", "Whole document", "", S.FONT)
+        for rule, name, size, anchor in (
+                ("TYP-02", "Title", S.TITLE_SIZE, "front:title"),
+                ("TYP-03", "Author names", S.AUTHOR_SIZE, "front:authors"),
+                ("TYP-04", "Affiliations", S.AFFILIATION_SIZE, "front:authors"),
+                ("TYP-05", "Main text", S.BODY_SIZE, "all:paragraph"),
+                ("TYP-06", "Abstract and index terms", S.ABSTRACT_SIZE, "front:abstract"),
+                ("TYP-07", "Section headings", S.HEADING_SIZE, "all:heading"),
+                ("TYP-08", "Captions", S.CAPTION_SIZE, "all:caption"),
+                ("TYP-09", "References", S.REFERENCE_SIZE, "references")):
+            self._receipt(rule, name, "", f"{size.pt:g} pt", anchor=anchor)
+        self._receipt("TYP-10", "Whole document", "", "italics for emphasis, no underlining")
+        self._receipt("TYP-11", "Body paragraphs", "",
+                      f"first-line indent {p.first_line_indent_in:.2g} in", anchor="all:paragraph")
 
     # -- document defaults --------------------------------------------------
 
@@ -187,6 +276,7 @@ class IEEEDocxRenderer:
         if not self.paper.title:
             self.notes.append("No title found - used 'Untitled Manuscript'.")
         _set_font(_add(p, title), S.TITLE_SIZE)
+        self._comment(p, "front:title", "document")
 
         if self.paper.authors:
             shown = self._author_block()
@@ -238,6 +328,11 @@ class IEEEDocxRenderer:
                     shown.add(index)
         # an uneven last row: centre it by merging the empty cells away is not
         # possible in Word, so the empty cells simply stay blank
+        linked = sum(1 for links_ in links if links_)
+        self._receipt("TTL-06", "Authors", ", ".join(authors),
+                      f"{len(authors)} authors in separate columns, {linked} with their "
+                      f"affiliation underneath", anchor="front:authors")
+        self._comment(table.cell(0, 0).paragraphs[0], "front:authors")
         return shown
 
     # -- abstract and index terms -------------------------------------------
@@ -248,6 +343,9 @@ class IEEEDocxRenderer:
         _set_font(_add(p, S.ABSTRACT_LABEL), S.ABSTRACT_SIZE, bold=True, italic=True)
         if self.paper.abstract:
             _set_font(_add(p, self.paper.abstract), S.ABSTRACT_SIZE, bold=True)
+            self._receipt(["ABS-01", "ABS-02"], "Abstract", "", f"“{S.ABSTRACT_LABEL}” run-in "
+                          "label in bold italic, one paragraph", anchor="front:abstract")
+            self._comment(p, "front:abstract")
         else:
             run = _add(p, "[Abstract missing - the author should add a 150-250 word abstract.]")
             _set_font(run, S.ABSTRACT_SIZE, bold=True)
@@ -262,6 +360,10 @@ class IEEEDocxRenderer:
             terms = ", ".join(self.paper.keywords)
             terms = terms[:1].upper() + terms[1:]
             _set_font(_add(p, terms), S.ABSTRACT_SIZE, bold=True)
+            self._receipt(["ABS-06", "ABS-08"], "Index Terms", ", ".join(self.paper.keywords),
+                          f"{S.INDEX_TERMS_LABEL}{terms}", note="first word capitalised",
+                          anchor="front:index_terms")
+            self._comment(p, "front:index_terms")
         else:
             run = _add(p, "[Index terms missing - the author should add 3-5 keywords.]")
             _set_font(run, S.ABSTRACT_SIZE, bold=True)
@@ -302,46 +404,57 @@ class IEEEDocxRenderer:
             _set_font(_add(p, label), S.HEADING_SIZE, italic=True)
 
     def _ordered_sections(self) -> List[Section]:
-        """ACK-02: the main sections first, then appendices, then the
-        Acknowledgment (References follow). Subsections stay with their parent."""
-        groups: List[List[Section]] = []
-        for s in self.paper.sections:
-            if s.level == 1 or not groups:
-                groups.append([s])
-            else:
-                groups[-1].append(s)
-        rank = {"appendix": 1, "acknowledgment": 2}
-        groups.sort(key=lambda g: rank.get(g[0].ieee_slot, 0))     # stable: keeps author order
-        return [s for g in groups for s in g]
+        return ordered_sections(self.paper)
 
     def _section(self, section: Section) -> None:
+        mark = self._mark()
         self._heading(section)
+        if self.annotate:
+            heading = self._first_paragraph_since(mark)
+            if heading is not None:
+                self._comment(heading, anchor_of(section))
+            else:                                    # run-in: the comment waits for the text
+                self._pending_anchor = anchor_of(section)
         previous = ""
         for element in section.elements:
-            if element.kind == "paragraph":
-                # "where alpha was fixed..." after an equation continues the
-                # same sentence, so IEEE does not indent it.
-                continues = previous == "equation" and element.text[:1].islower()
-                self._body_paragraph(element.text, indent=not continues)
-            elif element.kind == "equation":
-                self._equation(element.text)
-            elif element.kind == "code":
-                self._code(element.text)
-            elif element.kind == "math_region":
-                # A display equation the PDF stored as scattered symbols. It
-                # cannot be rebuilt from text, so Step 6 copied it from the
-                # source PDF as a picture. Never print the scraps.
-                if element.image and os.path.exists(element.image):
-                    p = _paragraph(self.doc, align=WD_ALIGN_PARAGRAPH.CENTER,
-                                   before=S.CAPTION_SPACE_BEFORE, after=S.CAPTION_SPACE_BEFORE)
-                    self._picture(p, element.image)
-                else:
-                    number = re.search(r"\((\d{1,3})\)", element.text)
-                    label = f"Equation ({number.group(1)})" if number else "Display equation"
-                    _placeholder(self.doc, f"{label} - could not be recovered from the source")
-            elif element.kind == "caption":
-                self._caption(element)
+            mark = self._mark()
+            self._element(section, element, previous)
+            if self.annotate:
+                prefer = (rf"^({re.escape(S.FIGURE_LABEL)}|{S.TABLE_LABEL}|{S.ALGORITHM_LABEL})"
+                          if element.kind == "caption" else None)
+                first = self._first_paragraph_since(mark, prefer)
+                anchors = [anchor_of(element)]
+                if self._pending_anchor:
+                    anchors.insert(0, self._pending_anchor)
+                    self._pending_anchor = None
+                self._comment(first, *anchors)
             previous = element.kind
+
+    def _element(self, section: Section, element: Element, previous: str) -> None:
+        self._current_anchor = anchor_of(element)
+        if element.kind == "paragraph":
+            # "where alpha was fixed..." after an equation continues the
+            # same sentence, so IEEE does not indent it.
+            continues = previous == "equation" and element.text[:1].islower()
+            self._body_paragraph(element.text, indent=not continues)
+        elif element.kind == "equation":
+            self._equation(element.text)
+        elif element.kind == "code":
+            self._code(element.text)
+        elif element.kind == "math_region":
+            # A display equation the PDF stored as scattered symbols. It
+            # cannot be rebuilt from text, so Step 6 copied it from the
+            # source PDF as a picture. Never print the scraps.
+            if element.image and os.path.exists(element.image):
+                p = _paragraph(self.doc, align=WD_ALIGN_PARAGRAPH.CENTER,
+                               before=S.CAPTION_SPACE_BEFORE, after=S.CAPTION_SPACE_BEFORE)
+                self._picture(p, element.image)
+            else:
+                number = re.search(r"\((\d{1,3})\)", element.text)
+                label = f"Equation ({number.group(1)})" if number else "Display equation"
+                _placeholder(self.doc, f"{label} - could not be recovered from the source")
+        elif element.kind == "caption":
+            self._caption(element, section)
 
     def _code(self, text: str) -> None:
         """A code or prompt listing: typewriter font, small, line for line."""
@@ -386,8 +499,10 @@ class IEEEDocxRenderer:
         _set_font(_add(p, "\t" + body), S.BODY_SIZE, italic=True)
         if number:
             _set_font(_add(p, "\t" + number), S.BODY_SIZE)
+            self._receipt("EQN-01", f"Equation {number}", text[:60], f"{number} flush right",
+                          anchor=self._current_anchor)
 
-    def _caption(self, element: Element) -> None:
+    def _caption(self, element: Element, section: Optional[Section] = None) -> None:
         """Figures:  'Fig. 1. Caption text.'       - BELOW the figure
            Tables:   'TABLE I' / 'CAPTION TEXT'    - ABOVE the table, small caps
         """
@@ -412,8 +527,13 @@ class IEEEDocxRenderer:
                 _placeholder(self.doc, f"Figure {number} image - not found in the source")
             p = _paragraph(self.doc, align=WD_ALIGN_PARAGRAPH.CENTER,
                            before=S.CAPTION_SPACE_BEFORE, after=S.CAPTION_SPACE_AFTER)
-            _set_font(_add(p, f"{S.FIGURE_LABEL} {number}. "), S.CAPTION_SIZE)
+            # FIG-02: "Fig. 1." then an em space, then the caption text
+            _set_font(_add(p, f"{S.FIGURE_LABEL} {number}.{S.CAPTION_GAP}"), S.CAPTION_SIZE)
             _set_font(_add(p, f"{rest}."), S.CAPTION_SIZE)
+            self._receipt(["FIG-01", "FIG-02"], f"{S.FIGURE_LABEL} {number} caption",
+                          element.text[:len(match.group(0)) - len(match.group(3))].strip() or
+                          element.text[:12], f"{S.FIGURE_LABEL} {number}.",
+                          note="caption below the figure", anchor=anchor_of(element))
         elif kind == "algorithm":
             # caption line, then the algorithm box exactly as in the source
             p = _paragraph(self.doc, align=WD_ALIGN_PARAGRAPH.LEFT,
@@ -434,6 +554,10 @@ class IEEEDocxRenderer:
             _set_font(_add(p, f"{S.TABLE_LABEL} {roman}"), S.CAPTION_SIZE)
             p = _paragraph(self.doc, align=WD_ALIGN_PARAGRAPH.CENTER, keep_with_next=True)
             _set_font(_add(p, rest), S.CAPTION_SIZE, small_caps=True)
+            self._receipt(["TAB-01", "TAB-02", "TAB-03"], f"Table {roman} caption",
+                          element.text[:60], f"{S.TABLE_LABEL} {roman} / {rest[:50]}",
+                          note="title above the table, small capitals, no full stop",
+                          anchor=anchor_of(element))
             if has_image:
                 p = _paragraph(self.doc, align=WD_ALIGN_PARAGRAPH.CENTER,
                                before=S.CAPTION_SPACE_BEFORE)
@@ -464,6 +588,11 @@ class IEEEDocxRenderer:
                        before=S.HEADING1_SPACE_BEFORE, after=S.HEADING1_SPACE_AFTER,
                        keep_with_next=True)
         _set_font(_add(p, S.REFERENCES_HEADING), S.HEADING_SIZE, small_caps=True)
+        if self.paper.references:
+            self._receipt("REF-01", "Reference list", "",
+                          f"{len(self.paper.references)} references numbered [1], [2]… with a "
+                          "hanging indent", anchor="references")
+        self._comment(p, "references")
 
         if not self.paper.references:
             _placeholder(self.doc, "No references found in the source document")
@@ -488,6 +617,7 @@ class IEEEDocxRenderer:
                     _set_font(_add(p, text), S.REFERENCE_SIZE, italic=italic)
             else:
                 _set_font(_add(p, ALREADY_NUMBERED_REF.sub("", ref, count=1)), S.REFERENCE_SIZE)
+            self._comment(p, f"reference:{i}")
 
         if not records:
             self.notes.append(
@@ -496,6 +626,24 @@ class IEEEDocxRenderer:
             )
 
 
-def render_docx(paper: StructuredPaper, output_path: str) -> List[str]:
-    """Write the paper as an IEEE-formatted .docx. Returns notes about any gaps."""
-    return IEEEDocxRenderer(paper).render(output_path)
+def ordered_sections(paper: StructuredPaper) -> List[Section]:
+    """ACK-02: the main sections first, then appendices, then the Acknowledgment
+    (References follow). Subsections stay with their parent. Used by the Word
+    file and by the web page's manuscript preview, so both show the same order."""
+    groups: List[List[Section]] = []
+    for s in paper.sections:
+        if s.level == 1 or not groups:
+            groups.append([s])
+        else:
+            groups[-1].append(s)
+    rank = {"appendix": 1, "acknowledgment": 2}
+    groups.sort(key=lambda g: rank.get(g[0].ieee_slot, 0))     # stable: keeps author order
+    return [s for g in groups for s in g]
+
+
+def render_docx(paper: StructuredPaper, output_path: str, annotate: bool = False) -> List[str]:
+    """Write the paper as an IEEE-formatted .docx. Returns notes about any gaps.
+
+    annotate=True writes the same manuscript with every IEEE rule receipt as a
+    margin comment at the exact place it was applied (for the rubric)."""
+    return IEEEDocxRenderer(paper, annotate=annotate).render(output_path)

@@ -126,6 +126,18 @@ def test_web_page_composes_the_sample_paper(tmp_path, monkeypatch):
     assert "Automated Detection of Pulmonary Nodules" in page
     assert "The IEEE manuscript" in page                      # the score track
     assert os.path.exists(tmp_path / "sample_paper_IEEE.docx")
-    assert [t.label for t in app.tabs][:2] == ["Compliance checks", "Section mapping"]
+    labels = [t.label for t in app.tabs]
+    assert labels[0].startswith("IEEE rubric") and labels[1:3] == ["Compliance checks",
+                                                                    "Section mapping"]
+    # the guided rubric review: one rule at a time, Yes / No, then the score
+    page = " ".join(m.value for m in app.markdown)
+    assert "Is this rule applied correctly in the IEEE manuscript?" in page
+    assert "LAY-01" in page                                   # the first rule that applies
+    next(b for b in app.button if b.label == "✔ Yes, applied").click().run()
+    assert "LAY-02" in " ".join(m.value for m in app.markdown)   # moved on to the next rule
+    next(b for b in app.button if b.label == "Accept suggestions for the rest and finish") \
+        .click().run()
+    final = " ".join(m.value for m in app.markdown)
+    assert "IEEE rubric-based evaluation score" in final
     assert app.tabs[-1].label.startswith("IEEE rulebook")
     assert "LAY-02" in page                                   # rule IDs shown on the checks

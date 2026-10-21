@@ -4,7 +4,7 @@ Every IEEE formatting rule the IEEE Manuscript Composition Engine follows.
 This file is generated from `src/rules/ieee_rules.py` by `python tools/export_rules.py`;
 edit the rulebook, not this file.
 
-**97 rules:** 76 applied automatically, 3 checked and reported, 18 left to the author's judgement.
+**99 rules:** 78 applied automatically, 3 checked and reported, 18 left to the author's judgement.
 
 | Status | Meaning |
 |---|---|
@@ -94,7 +94,7 @@ edit the rulebook, not this file.
 | ID | Rule | Value | Status | Source | Applied in | Score check |
 |---|---|---|---|---|---|---|
 | FIG-01 | The figure caption goes BELOW the figure, centred. |  | Applied automatically | GUIDE: Figures | `src/render/docx_renderer.py` | `caption_style` |
-| FIG-02 | The caption starts "Fig. 1.". | Fig. | Applied automatically | ESM: Figure captions | `src/render/docx_renderer.py` | `caption_style` |
+| FIG-02 | The caption starts "Fig. 1." (always abbreviated) followed by an em space, then the caption text, which ends with a full stop. | Fig. 1. Caption text. | Applied automatically | ESM: Figure captions | `src/render/docx_renderer.py` | `caption_style` |
 | FIG-03 | In the text a figure is always "Fig. 1", even at the start of a sentence. |  | Applied automatically | ESM: Figure captions | `src/compose/ieee_text.py` | `visual_mentions` |
 | FIG-04 | Parts of a figure are cited as "Fig. 1(a)". |  | Applied automatically | ESM: Figure captions | `src/compose/ieee_text.py` | `visual_mentions` |
 | FIG-05 | Each figure and table is placed after the paragraph that first mentions it (the engine's novelty). |  | Applied automatically | GUIDE | `src/placement/contextual.py` | `placement` |
@@ -103,6 +103,8 @@ edit the rulebook, not this file.
 | FIG-08 | No caption, text box or border inside the figure image. |  | Author's judgement | GUIDE: Figures |  |  |
 | FIG-09 | Axis labels use words with units: "Magnetization (kA/m)". |  | Author's judgement | GUIDE: Figures |  |  |
 | FIG-10 | A reused figure cites its source at the end of the caption. |  | Author's judgement | ESM: Figure captions |  |  |
+| FIG-11 | Caption text starts with a capital letter and not with "A", "An" or "The" ("Fig. 3. Harness.", not "Fig. 3. The harness."). Applies to table titles too. | A, An, The | Applied automatically | ESM: Figure captions | `src/compose/ieee_text.py` | `caption_style` |
+| FIG-12 | Figures, tables and equations mentioned INSIDE a caption follow the same wording rules as the text: "Fig. 2", "Table III", "(1)". |  | Applied automatically | ESM: Figure captions | `src/compose/ieee_text.py` | `caption_style` |
 
 ## Tables
 

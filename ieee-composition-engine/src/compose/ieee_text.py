@@ -16,6 +16,8 @@ word list (contractions, units, abbreviations) is read from there:
   NUM-04         "40-50 mm" -> "40–50 mm",  "20-30%" -> "20%–30%"
   STY-01         "don't"    -> "do not"
   STY-03         two spaces after a full stop -> one
+  FIG-11         caption text: capital first letter, no leading "A", "An", "The"
+  FIG-12         the rules above also apply to the text INSIDE captions
 
 Each rule is a find-and-replace, so its effect is predictable and testable.
 """
@@ -91,21 +93,25 @@ def section_number_map(paper: StructuredPaper) -> Dict[str, str]:
 # The rules
 # ---------------------------------------------------------------------------
 
-def apply_number_rules(text: str) -> Tuple[str, int]:
+def apply_number_rules(text: str, log=None) -> Tuple[str, int]:
     """NUM-01 .. NUM-04. Returns (text, number of changes)."""
     changes = 0
 
-    def count(pattern: re.Pattern, repl, s: str) -> str:
-        nonlocal changes
-        s, n = pattern.subn(repl, s)
-        changes += n
-        return s
+    def count(pattern: re.Pattern, template: str, rule: str, s: str) -> str:
+        def repl(m: re.Match) -> str:
+            nonlocal changes
+            changes += 1
+            new = m.expand(template)
+            if log:
+                log([rule], m.group(0), new)
+            return new
+        return pattern.sub(repl, s)
 
-    text = count(PERCENT_RANGE, r"\1%–\2%", text)        # NUM-04 (before NUM-03)
-    text = count(PERCENT_SPACE, r"\1%", text)            # NUM-03
-    text = count(UNIT_RANGE, r"\1–\2 \3", text)          # NUM-04
-    text = count(UNIT_ATTACHED, r"\1 \2", text)          # NUM-02
-    text = count(BARE_DECIMAL, r"0.\1", text)            # NUM-01
+    text = count(PERCENT_RANGE, r"\1%–\2%", "NUM-04", text)     # before NUM-03
+    text = count(PERCENT_SPACE, r"\1%", "NUM-03", text)
+    text = count(UNIT_RANGE, r"\1–\2 \3", "NUM-04", text)
+    text = count(UNIT_ATTACHED, r"\1 \2", "NUM-02", text)
+    text = count(BARE_DECIMAL, r"0.\1", "NUM-01", text)
     return text, changes
 
 
@@ -118,31 +124,47 @@ def number_style_counts(text: str) -> Tuple[int, int]:
     return good, bad
 
 
-def apply_text_rules(text: str, sections: Optional[Dict[str, str]] = None
+def apply_text_rules(text: str, sections: Optional[Dict[str, str]] = None, log=None
                      ) -> Tuple[str, Dict[str, int]]:
-    """Apply the IEEE wording rules to one paragraph. Returns (text, counts)."""
+    """Apply the IEEE wording rules to one paragraph. Returns (text, counts).
+
+    `log(rules, before, after)`, if given, is called for every single change -
+    that is how the rubric knows exactly where each rule was applied."""
     counts = {k: 0 for k in COUNT_KEYS}
+
+    def note(rules, before: str, after: str) -> None:
+        if log and before != after:
+            log(rules, before, after)
 
     def fig(m: re.Match) -> str:                         # FIG-03, FIG-04
         counts["figure"] += 1
         word = "Figs." if m.group(1) in ("Figures", "Figs") else R.LABELS["figure"]
         part = m.group(3) or m.group(4)
-        return f"{word} {m.group(2)}" + (f"({part})" if part else "")
+        new = f"{word} {m.group(2)}" + (f"({part})" if part else "")
+        note(["FIG-03", "FIG-04"] if part else ["FIG-03"], m.group(0), new)
+        return new
 
     def tables(m: re.Match) -> str:                      # TAB-04
         counts["table"] += 1
-        return f"Tables {to_roman(int(m.group(1)))} and {to_roman(int(m.group(2)))}"
+        new = f"Tables {to_roman(int(m.group(1)))} and {to_roman(int(m.group(2)))}"
+        note(["TAB-04"], m.group(0), new)
+        return new
 
     def table(m: re.Match) -> str:
         counts["table"] += 1
-        return f"Table {to_roman(int(m.group(1)))}"
+        new = f"Table {to_roman(int(m.group(1)))}"
+        note(["TAB-04"], m.group(0), new)
+        return new
 
     def eq(m: re.Match) -> str:                          # EQN-02
         counts["equation"] += 1
         lead = m.group("lead")
         if lead is not None:                             # start of a sentence
-            return f"{lead}Equation ({m.group('n')})"
-        return f"({m.group('n')})"
+            new = f"{lead}Equation ({m.group('n')})"
+        else:
+            new = f"({m.group('n')})"
+        note(["EQN-02"], m.group(0).strip(), new.strip())
+        return new
 
     def section(m: re.Match) -> str:                     # HDG-09
         lookup = sections or {}
@@ -153,6 +175,7 @@ def apply_text_rules(text: str, sections: Optional[Dict[str, str]] = None
             out += f" {m.group('join')} {lookup.get(m.group('b'), m.group('b'))}"
         if out != m.group(0):
             counts["section_ref"] += 1
+            note(["HDG-09"], m.group(0), out)
         return out
 
     def cite_after_stop(m: re.Match) -> str:             # CIT-04
@@ -160,10 +183,13 @@ def apply_text_rules(text: str, sections: Optional[Dict[str, str]] = None
         if word.lower().rstrip(".") in R.ABBREVIATIONS_BEFORE_CITATION or len(word) == 1:
             return m.group(0)                            # "et al. [3]" stays
         counts["citation"] += 1
-        return f"{word} {m.group('cite')}."
+        new = f"{word} {m.group('cite')}."
+        note(["CIT-04"], m.group(0), new)
+        return new
 
     def reference_word(m: re.Match) -> str:              # CIT-05
         counts["citation"] += 1
+        note(["CIT-05"], m.group(0), m.group("cite"))
         return m.group("cite")
 
     text = FIGURE.sub(fig, text)
@@ -173,28 +199,80 @@ def apply_text_rules(text: str, sections: Optional[Dict[str, str]] = None
     text = SECTION_REF.sub(section, text)
     text = REFERENCE_WORD.sub(reference_word, text)
     text = CITE_AFTER_STOP.sub(cite_after_stop, text)
-    text, counts["number"] = apply_number_rules(text)
+    text, counts["number"] = apply_number_rules(text, log=note)
 
     def contraction(m: re.Match) -> str:                 # STY-01
         word = m.group(0)
         full = CONTRACTIONS[word.lower().replace("’", "'")]
         counts["contraction"] += 1
-        return full[0].upper() + full[1:] if word[0].isupper() else full
+        new = full[0].upper() + full[1:] if word[0].isupper() else full
+        note(["STY-01"], word, new)
+        return new
 
     pattern = r"\b(" + "|".join(re.escape(c).replace("'", "['’]") for c in CONTRACTIONS) + r")\b"
     text = re.sub(pattern, contraction, text, flags=re.I)
 
     text, counts["spacing"] = DOUBLE_SPACE.subn(" ", text)   # STY-03
+    if counts["spacing"]:
+        note(["STY-03"], "two spaces", f"one space ({counts['spacing']}×)")
     return text, counts
 
 
+CAPTION_LABEL_PART = re.compile(
+    r"^(\s*(?:fig\.?|figure|table|algorithm)\s*(?:[0-9]+|[IVXLC]+)[a-z]?\s*[.:\-–—|]?\s*)(.*)$",
+    re.I | re.S)
+LEADING_ARTICLE = re.compile(
+    r"^(?:" + "|".join(R.CAPTION_AVOID_FIRST) + r")\s+(?=[A-Za-z])", re.I)
+
+
+def apply_caption_rules(text: str, sections: Optional[Dict[str, str]] = None, log=None
+                        ) -> Tuple[str, Dict[str, int]]:
+    """FIG-11 / FIG-12 on one caption. The label ("Figure 3:") is left for the
+    renderer, which writes it as "Fig. 3." / "TABLE III"; only the text after
+    it is changed."""
+    match = CAPTION_LABEL_PART.match(text)
+    if not match:
+        return text, {k: 0 for k in COUNT_KEYS} | {"caption": 0}
+    label, body = match.groups()
+    inner = (lambda rules, b, a: log(rules + ["FIG-12"], b, a)) if log else None
+    body, counts = apply_text_rules(body, sections, log=inner)   # FIG-12
+    counts["caption"] = 0
+    new = LEADING_ARTICLE.sub("", body, count=1)                  # FIG-11
+    first_word = re.match(r"\S+", new)
+    # capitalise an ordinary word only - never a symbol or variable ("τ", "k-means", "x")
+    if first_word and re.fullmatch(r"[a-z]{2,}[,.;:]?", first_word.group(0)):
+        new = new[:1].upper() + new[1:]
+    if new != body:
+        counts["caption"] = 1
+        if log:
+            log(["FIG-11"], short_words(body), short_words(new))
+    return label + new, counts
+
+
+def short_words(text: str, n: int = 6) -> str:
+    words = text.split()
+    return " ".join(words[:n]) + ("…" if len(words) > n else "")
+
+
 def apply_to_paper(paper: StructuredPaper) -> Dict[str, int]:
+    from ..rubric.evidence import anchor_of, record, where_of
+
     totals = {k: 0 for k in COUNT_KEYS}
+    totals["caption"] = 0
     sections = section_number_map(paper)
     for section in paper.sections:
         for element in section.elements:
+            if element.kind not in ("paragraph", "caption"):
+                continue
+            place, anchor = where_of(paper, section, element), anchor_of(element)
+
+            def log(rules, before, after, place=place, anchor=anchor):
+                record(paper, rules, place, before, after, anchor=anchor)
+
             if element.kind == "paragraph":
-                element.text, counts = apply_text_rules(element.text, sections)
-                for k, v in counts.items():
-                    totals[k] += v
+                element.text, counts = apply_text_rules(element.text, sections, log=log)
+            else:
+                element.text, counts = apply_caption_rules(element.text, sections, log=log)
+            for k, v in counts.items():
+                totals[k] = totals.get(k, 0) + v
     return totals

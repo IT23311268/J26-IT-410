@@ -29,6 +29,7 @@ from .evaluate import evaluate
 from .ingest import PackageError, load_document, read_package
 from .placement import place_visuals
 from .render import ieee_style, render_docx
+from .rubric import build_rubric, save_rubric
 from .structure import map_to_ieee, structure_document
 from .visuals import export_visuals
 
@@ -59,6 +60,8 @@ class PipelineResult:
     docx_path: str = ""
     render_notes: List[str] = field(default_factory=list)
     compliance: object = None                 # ComplianceReport
+    rubric: List[object] = field(default_factory=list)    # RubricItem per rulebook rule
+    annotated_path: str = ""                  # the Word copy with rule comments in the margin
     saved: List[Tuple[str, str]] = field(default_factory=list)
 
 
@@ -111,13 +114,13 @@ def run_pipeline(input_path: str, outdir: str = "data/output", offline: bool = F
     place_visuals(result.paper)
     result.assets_dir = os.path.join(outdir, f"{stem}_assets")
     result.exported = export_visuals(result.paper, input_path, result.assets_dir)
-    paper_path = os.path.join(outdir, f"{stem}_ieee_paper.json")
-    result.paper.to_json(paper_path)
-    result.saved.append((paper_path, "the finished paper, as data"))
     tell("visuals")
 
     result.docx_path = os.path.join(outdir, f"{stem}_IEEE.docx")
     result.render_notes = render_docx(result.paper, result.docx_path)
+    paper_path = os.path.join(outdir, f"{stem}_ieee_paper.json")
+    result.paper.to_json(paper_path)                     # after rendering: all receipts included
+    result.saved.append((paper_path, "the finished paper, as data"))
     tell("render")
 
     result.compliance = evaluate(result.source_doc, result.source_paper,
@@ -125,6 +128,15 @@ def run_pipeline(input_path: str, outdir: str = "data/output", offline: bool = F
     compliance_path = os.path.join(outdir, f"{stem}_compliance.json")
     result.compliance.to_json(compliance_path)
     result.saved.append((compliance_path, "the compliance score, check by check"))
+    # the rubric: every rulebook rule, whether it applies, where it was applied
+    result.rubric = build_rubric(result.paper, result.compliance, result.is_package)
+    rubric_path = os.path.join(outdir, f"{stem}_rubric.json")
+    save_rubric(result.rubric, rubric_path)
+    result.saved.append((rubric_path, "the IEEE rubric: every rule, where it was applied"))
+    result.annotated_path = os.path.join(outdir, f"{stem}_IEEE_annotated.docx")
+    render_docx(result.paper, result.annotated_path, annotate=True)
+    result.saved.append((result.annotated_path, "the manuscript with each IEEE rule as a "
+                                                 "margin comment"))
     if any(result.exported.values()):
         result.saved.append((result.assets_dir, "the figure, table and equation images"))
     tell("score")

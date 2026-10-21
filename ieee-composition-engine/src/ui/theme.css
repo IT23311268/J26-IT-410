@@ -192,3 +192,45 @@ table.rules tr.group th { padding-top: 1.1rem; color: var(--paper); font-family:
 .st-checked { color: var(--plate); background: var(--amber); }
 .st-author { color: var(--graphite); border: 1px solid var(--rule); }
 @media (max-width: 640px) { table.rules td.src, table.rules th:nth-child(4) { display: none; } }
+
+/* ---- the IEEE rubric tab ------------------------------------------------ */
+.rubric-head { display: flex; justify-content: space-between; align-items: flex-end; gap: 1rem;
+               padding: .8rem 0 .4rem; border-bottom: 1px solid var(--rule); margin-bottom: .6rem; }
+.rubric-head > div { display: flex; flex-direction: column; gap: .15rem; }
+.rubric-head .engine-side { text-align: right; }
+.rubric-num { font-family: var(--serif); font-size: 2.8rem; line-height: 1; font-weight: 600; color: var(--cobalt); }
+.rubric-engine { font-family: var(--serif); font-size: 1.9rem; line-height: 1; font-weight: 600; color: var(--paper); }
+.rubric-rule { padding: .15rem 0 .1rem; line-height: 1.45; }
+.rubric-rule .rule-text { color: var(--paper); }
+.rubric-rule .reason { display: block; color: var(--graphite); font-size: .82rem; margin-top: .1rem; }
+.state { font-size: .72rem; font-weight: 600; border-radius: 4px; padding: .08rem .38rem; margin-left: .3rem; white-space: nowrap; }
+.st-applied { color: var(--plate); background: var(--cobalt); }
+.st-met { color: var(--cobalt); border: 1px solid var(--cobalt); }
+.st-partly, .st-not_met { color: var(--plate); background: var(--amber); }
+.st-review { color: var(--amber); border: 1px solid var(--amber); }
+.st-na { color: var(--graphite); border: 1px solid var(--rule); }
+table.evidence td { font-size: .84rem; padding: .35rem .5rem; }
+table.evidence td.ev-where { color: var(--graphite); width: 34%; }
+.ev-before { color: var(--amber); }
+.ev-after { color: var(--paper); }
+.ev-arrow { color: var(--graphite); margin: 0 .4rem; }
+.ev-note { display: block; color: var(--graphite); font-size: .78rem; }
+@media (max-width: 640px) { .rubric-num { font-size: 2.1rem; } .rubric-engine { font-size: 1.5rem; } }
+
+/* ---- guided rubric review ------------------------------------------------ */
+.rule-card { border: 1px solid var(--rule); border-radius: 8px; padding: .9rem 1rem .6rem; background: var(--press); margin-bottom: .8rem; }
+.rule-top { display: flex; align-items: center; gap: .5rem; flex-wrap: wrap; margin-bottom: .35rem; }
+.rid.big { font-size: .9rem; padding: .05rem .45rem; }
+.rule-group { color: var(--graphite); font-size: .82rem; }
+.rule-big { font-family: var(--serif); font-size: 1.12rem; line-height: 1.4; color: var(--paper); margin: .2rem 0 .3rem; }
+.rule-value { color: var(--graphite); font-size: .86rem; margin: 0 0 .3rem; }
+.engine-says { font-size: .86rem; margin: .3rem 0 0; color: var(--graphite); }
+.place-head { color: var(--paper); font-size: .9rem; margin: .3rem 0 .4rem; }
+.chg { display: grid; grid-template-columns: 4.2rem 1fr; gap: .4rem; font-size: .9rem; padding: .3rem 0; border-top: 1px solid var(--rule); }
+.chg-label { color: var(--graphite); font-size: .78rem; padding-top: .1rem; }
+.question { font-weight: 600; color: var(--paper); margin: .9rem 0 .4rem; }
+.legend { margin-top: .3rem; font-size: .8rem; }
+.sw { display: inline-block; width: .9rem; height: .9rem; border-radius: 3px; vertical-align: -2px; margin: 0 .25rem 0 .7rem; }
+.sw-cur { background: #ffd84d; } .sw-all { background: #fff1a6; } .sw-rel { background: #d6e4ff; }
+.rubric-final { display: flex; flex-direction: column; align-items: center; text-align: center; gap: .3rem; padding: 1.4rem 0 1rem; border-bottom: 1px solid var(--rule); margin-bottom: 1rem; }
+.rubric-final .rubric-num { font-size: 4rem; }

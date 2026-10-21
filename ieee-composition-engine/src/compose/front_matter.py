@@ -76,6 +76,7 @@ def abstract_citations(text: str) -> int:
 
 
 def apply_front_matter_rules(paper: StructuredPaper) -> List[str]:
+    from ..rubric.evidence import record
     report: List[str] = []
     if paper.title:
         new = INVITED.sub(" ", paper.title).strip()                  # TTL-02
@@ -83,14 +84,25 @@ def apply_front_matter_rules(paper: StructuredPaper) -> List[str]:
             new = _smart_title(new.lower())
         if new != paper.title:
             report.append("Title: put into IEEE title case (rule TTL-01/TTL-02).")
+            rules = (["TTL-02"] if INVITED.search(paper.title) else []) + \
+                (["TTL-01"] if paper.title.replace("(Invited)", "").strip().isupper() else [])
+            record(paper, rules or ["TTL-01"], "Title", paper.title, new, anchor="front:title")
             paper.title = new
     fixed = [JOINED_INITIALS.sub(r"\1 ", a) for a in paper.authors]   # TTL-03
     if fixed != paper.authors:
         report.append("Authors: a space added between initials, \"J. K. Smith\" (rule TTL-03).")
+        for old, new in zip(paper.authors, fixed):
+            if old != new:
+                record(paper, "TTL-03", "Authors", old, new, anchor="front:authors")
         paper.authors = fixed
     if paper.abstract:
         cleaned, removed = clean_abstract(paper.abstract)             # ABS-04
         if removed:
+            found = [m.group(0).strip() for p in (ABSTRACT_NUMERIC_CITE, ABSTRACT_YEAR_AFTER_NAME,
+                                                  ABSTRACT_PAREN_CITE)
+                     for m in p.finditer(paper.abstract)]
+            record(paper, "ABS-04", "Abstract", "; ".join(found), "removed",
+                   anchor="front:abstract")
             paper.abstract = cleaned
             report.append(f"Abstract: {removed} citation(s) removed - IEEE abstracts contain "
                           "no citations (rule ABS-04).")
@@ -185,6 +197,9 @@ def make_index_terms(paper: StructuredPaper, llm: BaseLLM) -> List[str]:
         before = list(paper.keywords)
         paper.keywords = tidy_terms(paper.keywords)
         if paper.keywords != before:
+            from ..rubric.evidence import record
+            record(paper, "ABS-07", "Index Terms", ", ".join(before), ", ".join(paper.keywords),
+                   note="alphabetical, lower case except acronyms", anchor="front:index_terms")
             report.append("Index terms: author's keywords put into IEEE form "
                           "(alphabetical, lower case except acronyms).")
         return report
@@ -311,6 +326,9 @@ def make_abstract(paper: StructuredPaper, llm: BaseLLM) -> List[str]:
             if new and ok and _word_count(new) <= ABSTRACT_MAX:
                 report.append(f"Abstract: shortened by Gemini from {words} to "
                               f"{_word_count(new)} words (all numbers checked against the original).")
+                from ..rubric.evidence import record
+                record(paper, "ABS-03", "Abstract", f"{words} words", f"{_word_count(new)} words",
+                       note="shortened by Gemini; every number checked", anchor="front:abstract")
                 paper.ai_log.append(f"Abstract shortened by {llm.name}; original was {words} words.")
                 paper.abstract = new
             else:

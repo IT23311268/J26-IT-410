@@ -278,7 +278,33 @@ def place_visuals(paper: StructuredPaper) -> List[dict]:
 
     paper.placement_report = final
     paper.placement_summary = summarise(final)
+    _record_placement_evidence(paper, report, after)
     return final
+
+
+def _record_placement_evidence(paper: StructuredPaper, report, after) -> None:
+    """FIG-05 receipts: where each visual was, and where it went."""
+    from ..rubric.evidence import anchor_of, record, where_of
+
+    def describe(distance) -> str:
+        if distance is None:
+            return "not mentioned in the text"
+        if distance == 0:
+            return "right after its first mention"
+        if distance < 0:
+            return f"{-distance} paragraph(s) BEFORE its first mention"
+        return f"{distance} paragraph(s) after its first mention"
+
+    for visual, mention, entry in report:
+        if mention is not None:
+            section = next(s for s in paper.sections if any(e is mention for e in s.elements))
+            place = f"{entry['label']}, now after {where_of(paper, section, mention)}"
+        else:
+            place = f"{entry['label']} ({entry['to']})"
+        extra = {"related": anchor_of(mention), "related_text": entry["label"]} if mention else {}
+        record(paper, "FIG-05", place, describe(entry["distance_before"]),
+               describe(entry["distance_after"]), note=entry["method"],
+               anchor=anchor_of(visual), **extra)
 
 
 def summarise(report: List[dict]) -> dict:

@@ -124,6 +124,7 @@ LABELS: Dict[str, str] = {
     "acknowledgment": "Acknowledgment",  # IEEE spells it without the "e"
     "appendix": "Appendix",
     "figure": "Fig.",                    # always abbreviated
+    "caption_gap": "\u2003",             # an em space after "Fig. 1." (IEEE ESM)
     "table": "TABLE",                    # capitals + Roman numeral
     "algorithm": "Algorithm",
     "section": "Section",                # "Section II-A", never "Subsection"
@@ -221,6 +222,9 @@ CONTRACTIONS: Dict[str, str] = {
     "haven't": "have not", "let's": "let us", "i'm": "I am", "you're": "you are",
     "we'll": "we will", "they've": "they have", "here's": "here is", "what's": "what is",
 }
+
+# Caption text should not start with these words (IEEE ESM, figure captions)
+CAPTION_AVOID_FIRST = ("A", "An", "The")
 
 # Capitalised words that are NOT acronyms needing a definition: Roman
 # numerals, IEEE's own labels, and units.
@@ -375,8 +379,9 @@ RULES: List[Rule] = [
     # ---------------------------------------------------------------- figures
     Rule("FIG-01", "Figures", "The figure caption goes BELOW the figure, centred.",
          "GUIDE", ENFORCED, R, "caption_style", "", "Figures"),
-    Rule("FIG-02", "Figures", "The caption starts \"Fig. 1.\".", "ESM", ENFORCED, R,
-         "caption_style", LABELS["figure"], "Figure captions"),
+    Rule("FIG-02", "Figures", "The caption starts \"Fig. 1.\" (always abbreviated) followed by an "
+         "em space, then the caption text, which ends with a full stop.", "ESM", ENFORCED, R,
+         "caption_style", "Fig. 1.\u2003Caption text.", "Figure captions"),
     Rule("FIG-03", "Figures", "In the text a figure is always \"Fig. 1\", even at the start of "
          "a sentence.", "ESM", ENFORCED, TX, "visual_mentions", "", "Figure captions"),
     Rule("FIG-04", "Figures", "Parts of a figure are cited as \"Fig. 1(a)\".", "ESM", ENFORCED, TX,
@@ -392,6 +397,13 @@ RULES: List[Rule] = [
          "GUIDE", AUTHOR, "", "", "", "Figures"),
     Rule("FIG-10", "Figures", "A reused figure cites its source at the end of the caption.",
          "ESM", AUTHOR, "", "", "", "Figure captions"),
+    Rule("FIG-11", "Figures", "Caption text starts with a capital letter and not with \"A\", "
+         "\"An\" or \"The\" (\"Fig. 3. Harness.\", not \"Fig. 3. The harness.\"). Applies to "
+         "table titles too.", "ESM", ENFORCED, TX, "caption_style",
+         ", ".join(CAPTION_AVOID_FIRST), "Figure captions"),
+    Rule("FIG-12", "Figures", "Figures, tables and equations mentioned INSIDE a caption follow the "
+         "same wording rules as the text: \"Fig. 2\", \"Table III\", \"(1)\".", "ESM", ENFORCED,
+         TX, "caption_style", "", "Figure captions"),
 
     # ---------------------------------------------------------------- tables
     Rule("TAB-01", "Tables", "The table title goes ABOVE the table.", "GUIDE", ENFORCED, R,

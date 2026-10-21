@@ -158,6 +158,7 @@ class Element:
     # broken equation, "bbox" covers all its scattered pieces.
     bbox: List[float] = field(default_factory=list)
     region: List[float] = field(default_factory=list)
+    uid: str = ""            # stable id, so a rule's receipt can point at this element
 
 
 @dataclass
@@ -182,6 +183,7 @@ class Section:
     ieee_number: str = ""         # IEEE numbering: "III" for sections, "B" for subsections
     mapping_confidence: float = 0.0   # 0.0 to 1.0 - how sure the mapper is
     mapping_reason: str = ""      # plain-English explanation of the decision
+    uid: str = ""                 # stable id, so a rule's receipt can point at this heading
 
     @property
     def paragraphs(self) -> List[str]:
@@ -203,6 +205,9 @@ class StructuredPaper:
     # for each author, the indexes of their affiliations in `affiliations`
     # ("Ben Zhou" with superscripts 1,3 -> [0, 2]); empty when not known
     author_affiliations: List[List[int]] = field(default_factory=list)
+    # a receipt for every IEEE rule applied: rules, where, before, after, anchor
+    # (see src/rubric/evidence.py)
+    evidence: List[dict] = field(default_factory=list)
     abstract: str = ""
     keywords: List[str] = field(default_factory=list)
     sections: List[Section] = field(default_factory=list)

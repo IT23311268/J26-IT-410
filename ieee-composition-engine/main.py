@@ -27,6 +27,7 @@ Usage:
 from __future__ import annotations
 
 import argparse
+import os
 import sys
 import textwrap
 
@@ -258,6 +259,33 @@ def print_compliance(report) -> None:
             print(f"    - {c.name} ({', '.join(c.rules)}): {c.after_reason}")
 
 
+def print_rubric(r) -> None:
+    from src.rubric import rubric_score, summary
+    banner("IEEE RUBRIC - EVERY RULE, AND WHERE IT WAS APPLIED")
+    counts = summary(r.rubric)
+    ticked, applicable, pct = rubric_score(r.rubric)
+    print(f"  Rules that apply to this paper : {applicable} of {len(r.rubric)}")
+    print(f"    applied by the engine        : {counts['applied']}")
+    print(f"    already followed             : {counts['met']}")
+    print(f"    partly / not followed        : {counts['partly'] + counts['not_met']}")
+    print(f"    for a person to check        : {counts['review']}")
+    print(f"  Suggested rubric score         : {pct}%  ({ticked}/{applicable} ticked)")
+    print()
+    print("  Examples of where rules were applied:")
+    shown = 0
+    for item in r.rubric:
+        placed = [e for e in item.evidence if e.get("anchor") != "document"]
+        if item.state == "applied" and placed and shown < 8:
+            e = placed[0]
+            change = f"'{short(e['before'], 28)}' -> '{short(e['after'], 28)}'" if e["before"] \
+                else short(e["after"], 50)
+            print(f"    {item.id:<7} {short(e['where'], 30):<30} {change}")
+            shown += 1
+    print()
+    print("  Tick the rubric on the web page (streamlit run app.py), or open")
+    print(f"  {os.path.basename(r.annotated_path)} in Word to see every rule in the margin.")
+
+
 # ---------------------------------------------------------------------------
 
 def main() -> int:
@@ -313,6 +341,7 @@ def main() -> int:
                         print(("    - " if i == 0 else "      ") + line)
         elif stage == "score":
             print_compliance(r.compliance)
+            print_rubric(r)
 
     # All the stages live in src/pipeline.py - the web page (app.py) uses the same code.
     try:

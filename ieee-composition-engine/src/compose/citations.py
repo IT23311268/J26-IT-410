@@ -108,8 +108,12 @@ def convert_citations(paper: StructuredPaper, records: List[Record]) -> Tuple[Li
       new_order : old reference positions, in IEEE (first-cited) order
       stats     : counts for the report
     """
+    from ..rubric.evidence import anchor_of, record, where_of
+
     index = CitationIndex(records)
     first_seen: List[int] = []                 # old indexes in order of first citation
+    pending: List[tuple] = []                  # (rules, section, element, before, after-with-markers)
+    current: dict = {}                         # the section/element being converted
     stats = {"converted": 0, "unresolved": 0, "unresolved_examples": [],
              "already_numeric": 0}
 
@@ -129,7 +133,9 @@ def convert_citations(paper: StructuredPaper, records: List[Record]) -> Tuple[Li
                 _unresolved(match.group(0))
             return match.group(0)
         stats["converted"] += 1
-        return f"{match.group('names')} {number_for(old)}"
+        after = f"{match.group('names')} {number_for(old)}"
+        pending.append((["CIT-01"], current["s"], current["e"], match.group(0), after))
+        return after
 
     def parenthetical(match: re.Match) -> str:
         parts = [p.strip() for p in match.group(1).split(";")]
@@ -144,7 +150,10 @@ def convert_citations(paper: StructuredPaper, records: List[Record]) -> Tuple[Li
                 return match.group(0)          # all-or-nothing: never half-convert
             found.append(old)
         stats["converted"] += len(found)
-        return ", ".join(number_for(o) for o in found)
+        after = ", ".join(number_for(o) for o in found)
+        rules = ["CIT-01", "CIT-03"] if len(found) > 1 else ["CIT-01"]
+        pending.append((rules, current["s"], current["e"], match.group(0), after))
+        return after
 
     def numeric(match: re.Match) -> str:
         # Already IEEE-style: map "[3]" to the 3rd reference in the original list.
@@ -159,7 +168,12 @@ def convert_citations(paper: StructuredPaper, records: List[Record]) -> Tuple[Li
             for n in numbers:
                 if 1 <= n <= len(records):
                     out.append(number_for(n - 1))
-        return ", ".join(out) if out else match.group(0)
+        if not out:
+            return match.group(0)
+        after = ", ".join(out)
+        rules = ["CIT-02", "CIT-03"] if re.search(r"[–-]", match.group(1)) else ["CIT-02"]
+        pending.append((rules, current["s"], current["e"], match.group(0), after))
+        return after
 
     def _unresolved(text: str) -> None:
         stats["unresolved"] += 1
@@ -176,6 +190,7 @@ def convert_citations(paper: StructuredPaper, records: List[Record]) -> Tuple[Li
         for element in section.elements:
             if element.kind != "paragraph":
                 continue
+            current["s"], current["e"] = section, element
             text = NUMERIC.sub(numeric, element.text) if numbered_list else element.text
             text = NARRATIVE.sub(narrative, text)
             text = PAREN.sub(parenthetical, text)
@@ -203,6 +218,19 @@ def convert_citations(paper: StructuredPaper, records: List[Record]) -> Tuple[Li
         for element in section.elements:
             if element.kind == "paragraph":
                 element.text = re.sub(r"\u0000(\d+)\u0000", final, element.text)
+
+    # receipts, now that the final numbers are known
+    for rules, section, element, before, after in pending:
+        after = re.sub(r"\u0000(\d+)\u0000", final, after)
+        if after != before:
+            record(paper, rules, where_of(paper, section, element), before, after,
+                   anchor=anchor_of(element))
+    moved = [(old + 1, new) for old, new in sorted(new_number.items()) if old + 1 != new]
+    if moved:
+        examples = ", ".join(f"[{a}] → [{b}]" for a, b in moved[:6])
+        record(paper, "CIT-02", "Reference list", "author's order",
+               f"order of first citation ({examples}{'…' if len(moved) > 6 else ''})",
+               anchor="references")
 
     stats["uncited"] = len(records) - len(first_seen)
     return new_order, stats

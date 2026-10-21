@@ -26,6 +26,7 @@ import streamlit as st
 from src.compose.llm import NoLLM
 from src.pipeline import PackageError, run_pipeline
 from src.ui import views as V
+from src.ui.rubric_tab import render_rubric_tab
 
 ROOT = os.path.dirname(os.path.abspath(__file__))
 INPUT_DIR = os.path.join(ROOT, "data", "input")
@@ -92,6 +93,7 @@ state = st.session_state
 state.setdefault("result", None)        # the last finished run
 state.setdefault("stages", {})          # stage -> one-line fact
 state.setdefault("error", None)
+state.setdefault("run_id", 0)           # a new id per run, so rubric ticks start fresh
 
 # ---------------------------------------------------------------------------
 # Sidebar: settings
@@ -166,6 +168,7 @@ if run and input_path:
     done = {}
     current = {"stage": "ingest"}                  # the stage that is running now
     state.result, state.error = None, None
+    state.run_id += 1
     stage_box.markdown(V.stage_list(done, running="ingest"), unsafe_allow_html=True)
 
     def on_stage(stage, result):
@@ -232,24 +235,28 @@ if r is not None:
     html(f'<p class="quiet">Also saved on this computer in {V.esc(os.path.relpath(r.outdir, ROOT))}.</p>')
 
     cards = V.visual_cards(paper)
-    tabs = st.tabs(["Compliance checks", "Section mapping",
+    tabs = st.tabs([f"IEEE rubric ({sum(1 for i in r.rubric if i.applies)})",
+                    "Compliance checks", "Section mapping",
                     f"Figures and tables ({len(cards)})",
                     f"References ({len(paper.references)})", "What changed",
                     f"IEEE rulebook ({len(V.R.RULES)})"])
 
     with tabs[0]:
+        render_rubric_tab(r, state.run_id)
+
+    with tabs[1]:
         html('<p class="quiet">Each check is run on the paper as uploaded '
              '(<span style="color:var(--amber)">before</span>) and on the IEEE manuscript '
              '(<span style="color:var(--cobalt)">after</span>). Checks that cannot be measured '
              'for this input show n/a and are left out of the average.</p>')
         html(V.compliance_rows(report))
 
-    with tabs[1]:
+    with tabs[2]:
         html('<p class="quiet">How the author\'s sections were matched onto the IEEE skeleton, '
              'and why.</p>')
         html(V.mapping_table(paper))
 
-    with tabs[2]:
+    with tabs[3]:
         summary = paper.placement_summary or {}
         b, a = summary.get("before", {}), summary.get("after", {})
         if not cards:
@@ -286,13 +293,13 @@ if r is not None:
                 for path in equations:
                     st.image(path)
 
-    with tabs[3]:
+    with tabs[4]:
         if paper.references:
             html(V.reference_list(paper))
         else:
             html('<p class="quiet">No references were found.</p>')
 
-    with tabs[4]:
+    with tabs[5]:
         st.markdown("##### Composition")
         html(V.bullet_list(paper.compose_report or ["Nothing to report."]))
         llm = r.llm
@@ -309,7 +316,7 @@ if r is not None:
             st.markdown("##### Notes")
             html(V.bullet_list(notes))
 
-    with tabs[5]:
+    with tabs[6]:
         counts = V.R.summary()
         html(f'<p class="quiet">Every IEEE rule the engine follows, from '
              f'<code>src/rules/ieee_rules.py</code>. <b>{counts["enforced"]}</b> are applied '

@@ -394,6 +394,8 @@ def map_to_ieee(paper: StructuredPaper) -> StructuredPaper:
             section.ieee_heading = _smart_title(section.heading)
             section.ieee_number = f"{to_letter(sub_letter).lower()})"
 
+    _record_heading_evidence(paper)
+
     # --- what's missing, and is anything out of order? --------------------
     found = {s.ieee_slot for s in sections if s.level == 1}
     paper.missing_sections = [SLOTS[k].heading for k in REQUIRED if k not in found]
@@ -416,3 +418,45 @@ def map_to_ieee(paper: StructuredPaper) -> StructuredPaper:
         )
 
     return paper
+
+
+def _record_heading_evidence(paper: StructuredPaper) -> None:
+    """A receipt for every heading the mapper changed (rubric evidence)."""
+    from ..rubric.evidence import anchor_of, record
+
+    for s in paper.sections:
+        if not s.heading:
+            continue
+        before = f"{s.number} {s.heading}".strip()
+        place = f"Heading “{before}”"
+        anchor = anchor_of(s)
+        if s.level == 1:
+            shown = (f"{s.ieee_number}. " if s.ieee_number else "") + s.ieee_heading.upper()
+            if s.ieee_slot == "appendix":
+                record(paper, "HDG-08", place, before, s.ieee_heading, anchor=anchor)
+                continue
+            if s.ieee_number:
+                record(paper, "HDG-01", place, before, shown,
+                       note="Roman numeral, small capitals, centred", anchor=anchor)
+            renamed = s.ieee_heading.lower() != s.heading.lower() and s.ieee_slot in SLOTS \
+                and s.ieee_slot not in ("statement", "appendix")
+            if renamed:
+                rules = ["HDG-05"]
+                if s.ieee_slot == "acknowledgment":
+                    rules = ["ACK-01", "HDG-06"]
+                elif s.heading.lower().rstrip("s") == s.ieee_heading.lower():
+                    rules.append("HDG-07")                       # "Conclusions" -> "Conclusion"
+                record(paper, rules, place, s.heading, s.ieee_heading,
+                       note=s.mapping_reason, anchor=anchor)
+            elif s.ieee_slot == "acknowledgment":
+                record(paper, "HDG-06", place, before, s.ieee_heading, note="not numbered",
+                       anchor=anchor)
+        elif s.level == 2:
+            record(paper, "HDG-02", place, before, f"{s.ieee_number}. {s.ieee_heading}",
+                   note="capital letter, italic, flush left", anchor=anchor)
+        elif s.level == 3:
+            record(paper, "HDG-03", place, before, f"{s.ieee_number} {s.ieee_heading}:",
+                   note="italic, run into the paragraph", anchor=anchor)
+        else:
+            record(paper, "HDG-04", place, before, f"{s.ieee_number} {s.ieee_heading}:",
+                   note="italic, indented, run into the paragraph", anchor=anchor)

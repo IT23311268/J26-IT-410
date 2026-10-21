@@ -22,7 +22,7 @@ ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, ROOT)
 
 from src.compose.front_matter import apply_front_matter_rules, clean_abstract   # noqa: E402
-from src.compose.ieee_text import apply_text_rules, number_style_counts          # noqa: E402
+from src.compose.ieee_text import apply_caption_rules, apply_text_rules, number_style_counts          # noqa: E402
 from src.compose.references import abbreviate_venue, format_ieee, segments_to_text  # noqa: E402
 from src.evaluate import compliance                                              # noqa: E402
 from src.models import Element, Section, StructuredPaper                         # noqa: E402
@@ -203,3 +203,20 @@ def test_word_file_rules(tmp_path):
     assert order == ["Appendix: Extra Results", "Acknowledgment", "References"]  # ACK-02
     terms = next(t for t in texts if t.startswith(R.LABELS["index_terms"]))
     assert terms == "Index Terms—CT, deep learning"                            # ABS-07, ABS-08
+
+
+@pytest.mark.parametrize("before, after", [
+    # FIG-11: no leading "A", "An", "The"; capital first letter
+    ("Figure 3: The harness. The reducer reads the state.",
+     "Figure 3: Harness. The reducer reads the state."),
+    ("Table 2: A comparison of methods", "Table 2: Comparison of methods"),
+    ("Fig. 4. an overview of the pipeline.", "Fig. 4. Overview of the pipeline."),
+    # FIG-12: wording rules inside the caption text; the label itself is left alone
+    ("Figure 5: Same setup as Figure 2, with results from Table 3 and Eq. 4.",
+     "Figure 5: Same setup as Fig. 2, with results from Table III and (4)."),
+    ("Figure 6: Theory of mind scores.", "Figure 6: Theory of mind scores."),   # "Theory" stays
+    ("Table 7: τ 2-bench training settings.", "Table 7: τ 2-bench training settings."),  # symbol
+    ("Figure 8: k-means clusters.", "Figure 8: k-means clusters."),                      # name
+])
+def test_caption_rules(before, after):
+    assert apply_caption_rules(before)[0] == after

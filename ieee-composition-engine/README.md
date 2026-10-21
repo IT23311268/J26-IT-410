@@ -42,6 +42,40 @@ regenerated with `python tools/export_rules.py`. The web page also shows it
 in the **IEEE rulebook** tab, and every compliance check shows the rule IDs
 it tests.
 
+## The IEEE rubric (rubric-based evaluation)
+
+Every change the engine makes leaves a **receipt**: the rule ID, the exact
+place in the paper, and the text before and after
+(`src/rubric/evidence.py`). From these, `src/rubric/rubric.py` builds a
+rubric with one line per rulebook rule:
+
+| State | Meaning | Box starts |
+|---|---|---|
+| Applied by the engine | the engine changed the paper to follow the rule | ticked |
+| Already followed | nothing needed changing | ticked |
+| Partly / not followed | measured, and a program cannot fix it safely | unticked |
+| Check yourself | the author's judgement - a person decides | unticked |
+| Does not apply | e.g. table rules for a paper with no tables | not counted |
+
+On the web page, the **IEEE rubric** tab is a guided review, one rule at a time:
+
+1. **Left:** the rule, what the engine did, and how it changed the text
+   (before → after) - "Place 3 of 19", with buttons to step through every place.
+2. **Right:** the finished IEEE manuscript (`src/ui/preview.py`), with that
+   rule's places **highlighted** and the current one scrolled into view. A
+   moved figure is outlined and the paragraph that mentions it is marked too.
+3. **"Yes, applied" / "No"**, and on to the next rule.
+
+At the end: the **IEEE rubric-based evaluation score = rules confirmed Yes /
+rules that apply to this paper**, next to the engine's automatic compliance
+score. Downloads:
+
+- `<paper>_IEEE_rubric.xlsx` - the filled rubric (Summary + Rubric sheets)
+- `<paper>_IEEE_annotated.docx` - the manuscript with every rule as a
+  **margin comment** at the exact paragraph, heading, caption or reference
+
+The command line also saves `<paper>_rubric.json` and the annotated Word file.
+
 ## Setup (once)
 
 ```bash
@@ -126,8 +160,9 @@ Get a free key at <https://aistudio.google.com>. The `.env` file is listed in
 - [x] Stage 5 - IEEE references and citations, wording rules, index terms, abstract, polish (Gemini, every output checked); verified content package input
 - [x] Stage 6 - visual extraction, contextual placement, compliance score
 - [x] Stage 7 - dark Streamlit web page (`streamlit run app.py`)
-- [x] IEEE rulebook - 97 rules in `src/rules/ieee_rules.py`, read by the whole engine
+- [x] IEEE rulebook - 99 rules in `src/rules/ieee_rules.py`, read by the whole engine
 - [x] IEEE author block - each author listed separately with their own affiliation (TTL-06)
+- [x] IEEE rubric - every rule, where it was applied, reviewer ticks and a rubric score
 
 ## Results so far
 

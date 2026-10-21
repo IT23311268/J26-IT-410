@@ -147,7 +147,8 @@ def test_equation_number_is_tabbed_to_the_right(rendered):
 def test_figure_caption_uses_fig_abbreviation(rendered):
     document, _ = rendered
     p = _find(document, "Fig. 1.")
-    assert p.text == "Fig. 1. Overall architecture of the proposed detection network."
+    # FIG-02: "Fig. 1." then an em space (U+2003), as the IEEE Editorial Style Manual asks
+    assert p.text == "Fig. 1.\u2003Overall architecture of the proposed detection network."
     assert p.runs[0].font.size == Pt(8)
 
 
