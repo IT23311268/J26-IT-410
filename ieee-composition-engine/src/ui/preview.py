@@ -94,7 +94,9 @@ def preview_images(paper) -> Dict[str, str]:
 # ---------------------------------------------------------------------------
 
 class _Preview:
-    def __init__(self, paper, highlights: List[dict], images: Dict[str, str], banner: str):
+    def __init__(self, paper, highlights: List[dict], images: Dict[str, str], banner: str,
+                 theme: str = "dark"):
+        self.theme = theme
         self.paper = paper
         self.images = images
         self.banner = banner
@@ -276,7 +278,8 @@ class _Preview:
         banner_id = ' id="hl-current"' if self.page and not self.current_placed else ""
         banner = f'<div class="banner"{banner_id}>{esc(self.banner)}</div>' if self.banner else ""
         page_cls = " hl-page" if self.page else ""
-        return (f'<!doctype html><html><head><meta charset="utf-8"><style>{CSS}</style></head>'
+        css = CSS + (LIGHT_CSS if self.theme == "light" else "")
+        return (f'<!doctype html><html><head><meta charset="utf-8"><style>{css}</style></head>'
                 f'<body>{banner}<div class="sheet{page_cls}">{"".join(parts)}</div>'
                 f'<script>{SCROLL_JS}</script></body></html>')
 
@@ -378,10 +381,16 @@ class _Preview:
 
 
 def build_preview(paper, highlights: List[dict], images: Optional[Dict[str, str]] = None,
-                  banner: str = "") -> str:
-    """The manuscript as one HTML page, with these highlights."""
-    return _Preview(paper, highlights, images or {}, banner).build()
+                  banner: str = "", theme: str = "dark") -> str:
+    """The manuscript as one HTML page, with these highlights.
+    theme: "dark" (Streamlit page) or "light" (React page) - only the background around the sheet."""
+    return _Preview(paper, highlights, images or {}, banner, theme).build()
 
+
+LIGHT_CSS = """
+html, body { background: #e9eef5; }
+.sheet { box-shadow: 0 1px 3px rgba(16,24,40,.08), 0 8px 24px rgba(16,24,40,.08); }
+"""
 
 SCROLL_JS = """
 window.addEventListener('load', function () {

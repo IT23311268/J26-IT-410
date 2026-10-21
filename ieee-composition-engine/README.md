@@ -89,16 +89,33 @@ source venv/bin/activate
 pip install -r requirements.txt
 ```
 
-## Run the web page
+## Run the web page (React)
 
 ```bash
-streamlit run app.py
+python server.py
 ```
 
-Your browser opens at <http://localhost:8501>. Any paper you put in
-`data/input/` appears in the list; you can also drop in your own file. Press
-Ctrl+C in the terminal to stop the page. The fonts are bundled in
-`static/fonts/`, so the page works without an internet connection.
+Your browser opens at <http://localhost:8000>. Any paper you put in
+`data/input/` appears in the list; you can also drag in your own file. Press
+Ctrl+C in the terminal to stop. The page works without an internet connection.
+
+How it fits together:
+
+- `frontend/` - the React page (Vite). The built page is in `frontend/dist/`
+  and is already included, so **Node.js is not needed to run the demo**.
+- `server.py` - a small web API. It only calls the engine (`run_pipeline`)
+  and sends the results to the page as JSON. No engine logic lives here.
+- `src/ui/serialize.py` - turns the engine's result into JSON for the page.
+
+To change the React code you need Node.js (LTS) once:
+
+```bash
+cd frontend
+npm install        # once
+npm run build      # rebuilds frontend/dist - then run python server.py again
+```
+
+The older dark Streamlit page still works: `streamlit run app.py`.
 
 ## Run on the command line
 
@@ -159,7 +176,7 @@ Get a free key at <https://aistudio.google.com>. The `.env` file is listed in
 - [x] Stage 4 - two-column IEEE Word document (tested on a real ICLR-style arXiv paper)
 - [x] Stage 5 - IEEE references and citations, wording rules, index terms, abstract, polish (Gemini, every output checked); verified content package input
 - [x] Stage 6 - visual extraction, contextual placement, compliance score
-- [x] Stage 7 - dark Streamlit web page (`streamlit run app.py`)
+- [x] Stage 7 - web page: bright React front end (`python server.py`); the older Streamlit page remains (`streamlit run app.py`)
 - [x] IEEE rulebook - 99 rules in `src/rules/ieee_rules.py`, read by the whole engine
 - [x] IEEE author block - each author listed separately with their own affiliation (TTL-06)
 - [x] IEEE rubric - every rule, where it was applied, reviewer ticks and a rubric score

@@ -7,3 +7,4 @@ data/uploads/
 .pytest_cache/
 .DS_Store
 data/cache/
+frontend/node_modules/

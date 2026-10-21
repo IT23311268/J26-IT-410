@@ -9,8 +9,10 @@ python-dotenv>=1.0.0     # loads your API key from the .env file
 # Rubric download
 openpyxl>=3.1.0          # writes the filled IEEE rubric as an Excel file
 
-# Day 6 - demo interface
-streamlit>=1.38.0
+# Web page
+starlette>=0.37.0        # the small web API (server.py) the React page talks to
+uvicorn>=0.30.0          # runs server.py on http://localhost:8000
+streamlit>=1.38.0        # the older Streamlit page (app.py), still available
 
 # Testing
 pytest>=8.0.0
