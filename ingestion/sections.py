@@ -21,6 +21,8 @@ tried in.
 
 from __future__ import annotations
 
+import itertools
+
 import re
 
 from schema.ingestion_schema_v1 import LayoutRegion, RegionType, SectionType
@@ -170,6 +172,18 @@ def assign_sections(regions: list[LayoutRegion]) -> list[LayoutRegion]:
 #: to about 150 characters, and body text starts well above that.
 MAX_TITLE_CHARS = 200
 
+#: How far apart two font sizes may be and still count as the same
+#: type. Lines of one title are set identically; this is slack for a
+#: PDF that reports 16.99 and 17.0 for the same run, not room for a
+#: subtitle. The gap it has to stay under in practice is title to
+#: authors — 17.0 pt against 10.5 on the two-line case above.
+SAME_TYPE_PT = 0.6
+
+#: How much air may sit between two lines of one block, in line
+#: heights. Measured on a thesis title page, whose lines are set
+#: 1.58 line heights apart while the next block down is 8.42 away.
+MAX_LINE_GAP = 2.0
+
 
 def _is_sideways(region: LayoutRegion) -> bool:
     """Is this text printed rotated, running up the page?
@@ -192,6 +206,72 @@ def _is_sideways(region: LayoutRegion) -> bool:
     return width > 0 and height > width
 
 
+def _is_shouted(region: LayoutRegion) -> bool:
+    """Is this line set in capitals?
+
+    The signal of last resort. A thesis title page has no type
+    hierarchy at all — title, "A Thesis", the degree and the year are
+    every one of them 12 pt Times — so Box 3 marks nothing on it as a
+    heading and there is no largest type to find. The title is still
+    the only thing on the page shouted in capitals.
+
+    Four letters at least, so "of" and "by" and a copyright mark
+    cannot open a title block.
+    """
+    text = " ".join(region.text.split())
+    return sum(ch.isalpha() for ch in text) >= 4 and text == text.upper()
+
+
+def _join_block(regions: list[LayoutRegion], is_line) -> str:
+    """Join the first run of lines `is_line` accepts into one string.
+
+    A title longer than about forty characters does not fit one line
+    at title size, so it is broken across two or three — "Retrieval-
+    Augmented Generation for / Knowledge-Intensive NLP Tasks". Each
+    printed line is its own region, so taking the first returns half a
+    title. Two measurements say where the block ends, and on the two
+    documents this was built against they do the work in turn:
+
+    * the type stops matching. On a paper the title is 17.0 pt and the
+      author line under it 10.5, which separates them outright.
+    * the lines stop being adjacent. On a thesis title page everything
+      is 12 pt, so size says nothing — but the two title lines sit
+      1.58 line heights apart and the next block down the page is
+      8.42 away. Two line heights splits those with room either side.
+    """
+    lines: list[str] = []
+    size: float | None = None
+    bottom = 0.0
+
+    for region in regions:
+        text = " ".join(region.text.split())
+        if not text or not is_line(region):
+            if lines:
+                break  # the block ended at the line above
+            continue
+
+        if not lines:
+            if len(text) > MAX_TITLE_CHARS:
+                continue  # too long to be a title; keep looking
+            lines, size, bottom = [text], region.font_size, region.bbox.y1
+            continue
+
+        if size is None or region.font_size is None:
+            break  # nothing to compare the type against
+        if abs(region.font_size - size) > SAME_TYPE_PT:
+            break  # different type: a subtitle, or the authors
+        if region.bbox.y0 - bottom > MAX_LINE_GAP * size:
+            break  # too much air between them to be one block
+
+        joined = " ".join(lines + [text])
+        if len(joined) > MAX_TITLE_CHARS:
+            break
+        lines.append(text)
+        bottom = region.bbox.y1
+
+    return " ".join(lines)
+
+
 def paper_title(regions: list[LayoutRegion]) -> str:
     """The paper's own title, taken from the page rather than the
     filename.
@@ -200,21 +280,30 @@ def paper_title(regions: list[LayoutRegion]) -> str:
     to find one — a PDF's embedded metadata title is wrong or missing
     more often than not, and flat text cannot tell a title from the
     first line of the abstract. Once Box 3 has measured the fonts and
-    Box 4 has marked the front matter, it is simply the first heading
-    before any recognised section begins: the largest type on page one,
-    above the abstract.
+    Box 4 has marked the front matter, it is the first heading before
+    any recognised section begins: the largest type on page one, above
+    the abstract. `_join_block` keeps the rest of that heading's lines.
+
+    When Box 3 marked no heading at all in the front matter, the page
+    has no type hierarchy to read — a thesis title page sets every
+    line in the same 12 pt. Capitals are what is left, and on such a
+    page the title is the only thing in them. That fallback runs only
+    when there is no heading to be had, so it cannot overrule one.
 
     Returns "" when there is nothing defensible, which leaves
     `PaperMeta.title` None rather than guessing.
     """
-    for region in regions:
-        if region.section is not SectionType.TITLE:
-            break  # past the front matter; a heading here is a section
-        if region.region_type is not RegionType.HEADING:
-            continue
-        if _is_sideways(region):
-            continue
-        text = " ".join(region.text.split())
-        if text and len(text) <= MAX_TITLE_CHARS:
-            return text
-    return ""
+    front = [
+        r
+        for r in itertools.takewhile(
+            lambda r: r.section is SectionType.TITLE, regions
+        )
+        if not _is_sideways(r)
+    ]
+
+    def is_heading(region: LayoutRegion) -> bool:
+        return region.region_type is RegionType.HEADING
+
+    if any(is_heading(r) for r in front):
+        return _join_block(front, is_heading)
+    return _join_block(front, _is_shouted)
