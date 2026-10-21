@@ -348,3 +348,103 @@ def test_an_ordinary_title_is_not_mistaken_for_a_stamp():
         section=SectionType.TITLE,
     )
     assert paper_title([region]) == "Attention Is All You Need"
+
+
+def _title_line(text, y0, y1, size, kind=RegionType.HEADING, section=SectionType.TITLE):
+    from schema.ingestion_schema_v1 import BoundingBox, LayoutRegion
+
+    return LayoutRegion(
+        region_id=f"r{y0}",
+        paper_id="p",
+        region_type=kind,
+        bbox=BoundingBox(page=0, x0=100, y0=y0, x1=500, y1=y1),
+        text=text,
+        order_index=int(y0),
+        font_size=size,
+        section=section,
+    )
+
+
+def test_a_title_set_over_two_lines_comes_back_whole():
+    """Any title longer than about forty characters is broken across
+    lines at title size, and each printed line is its own region. The
+    page still says one title.
+
+    The numbers are measured off a rendering of this layout: both
+    lines 17.0 pt, the second beginning 0.4 pt above where the first
+    ends, and the author line 10.5 pt and 20.5 pt clear."""
+    regions = [
+        _title_line("Retrieval-Augmented Generation for", 71.8, 95.2, 17.0),
+        _title_line("Knowledge-Intensive NLP Tasks", 94.8, 118.2, 17.0),
+        _title_line("Patrick Lewis, Ethan Perez", 138.7, 153.1, 10.5,
+                    kind=RegionType.BODY),
+    ]
+    assert paper_title(regions) == (
+        "Retrieval-Augmented Generation for Knowledge-Intensive NLP Tasks"
+    )
+
+
+def test_a_second_line_in_different_type_is_not_part_of_the_title():
+    """A subtitle, a venue line or a running head set under the title
+    is a different block, and the size says so."""
+    regions = [
+        _title_line("Latent Core Tokenizer", 90.0, 112.0, 17.0),
+        _title_line("Proceedings of the 41st Conference", 113.0, 127.0, 9.0),
+    ]
+    assert paper_title(regions) == "Latent Core Tokenizer"
+
+
+def test_a_banner_set_in_title_type_is_not_dragged_into_the_title():
+    """Same size, but a third of the page away. Consecutive lines of
+    one block sit against each other; this one does not."""
+    regions = [
+        _title_line("Journal of Document Engineering", 40.0, 62.0, 17.0),
+        _title_line("Layout-Aware Ingestion", 300.0, 322.0, 17.0),
+    ]
+    assert paper_title(regions) == "Journal of Document Engineering"
+
+
+def test_a_thesis_title_page_still_yields_a_title():
+    """A thesis title page has no type hierarchy at all: the title,
+    "A Thesis", the degree and the year are every one of them 12 pt.
+    Box 3 marks nothing on it as a heading, so the size rule has
+    nothing to find and the page used to fall back to showing the
+    filename. Capitals are what is left.
+
+    Geometry measured off a rendering of a Guelph MSc title page: the
+    two title lines 19.0 pt apart (1.58 line heights) and "A Thesis"
+    101.0 pt below them (8.42)."""
+    regions = [
+        _title_line("A PRELIMINARY STUDY TOWARDS AUTOMATIC LINGUISTIC",
+                    192.4, 208.4, 12.0, kind=RegionType.BODY),
+        _title_line("INDEXING OF IMAGES BASED ON SPATIAL RELATIONS",
+                    227.4, 243.4, 12.0, kind=RegionType.BODY),
+        _title_line("A Thesis", 344.4, 360.4, 12.0, kind=RegionType.BODY),
+        _title_line("XIN WANG", 611.4, 627.4, 12.0, kind=RegionType.BODY),
+    ]
+    assert paper_title(regions) == (
+        "A PRELIMINARY STUDY TOWARDS AUTOMATIC LINGUISTIC "
+        "INDEXING OF IMAGES BASED ON SPATIAL RELATIONS"
+    )
+
+
+def test_capitals_never_overrule_a_heading():
+    """The fallback runs only when the front matter has no heading at
+    all. A paper with a shouted banner above its title still gets its
+    title, because the banner is not the heading."""
+    regions = [
+        _title_line("PROCEEDINGS OF THE 41ST CONFERENCE", 40.0, 52.0, 9.0,
+                    kind=RegionType.BODY),
+        _title_line("Layout-Aware Ingestion of Scholarly PDFs",
+                    90.0, 112.0, 17.0),
+    ]
+    assert paper_title(regions) == "Layout-Aware Ingestion of Scholarly PDFs"
+
+
+def test_a_front_matter_with_neither_heading_nor_capitals_gives_nothing():
+    """Better the filename than a guess."""
+    regions = [
+        _title_line("a note on the margins", 90.0, 102.0, 11.0,
+                    kind=RegionType.BODY),
+    ]
+    assert paper_title(regions) == ""
