@@ -343,11 +343,31 @@ _CSS = BASE_CSS + """
 .chunk .head { font-weight: 600; }
 
 /* Box 6 — the crops */
-.crops { display: grid; grid-template-columns: repeat(auto-fill, minmax(228px, 1fr)); gap: 18px; }
+/* Two or three crops to a row rather than four or five. The caption
+   is printed whole now, and the longest one in the RAG paper is 194
+   characters: at 228px that is nine lines and a card twice the height
+   of its neighbours. At 330 the row stays a row, and a figure is
+   large enough to read from the back of a room instead of being a
+   thumbnail of one.
+
+   The picture above each caption is a fixed height, so the captions
+   all begin on the same line across a row and the crops are
+   comparable — which is the whole point of setting them side by
+   side. The cards are NOT stretched to the tallest in the row: an
+   equation has no caption and a figure has six lines of one, and
+   matching their heights leaves half a card of white under the
+   equation. Ragged bottoms, no dead space. */
+.crops {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(330px, 1fr));
+  gap: 18px;
+  align-items: start;
+}
 .crops figure { margin: 0; border: 1px solid var(--rule); background: var(--sheet);
+                display: flex; flex-direction: column;
                 border-radius: var(--r); overflow: hidden; }
 .crops img {
-  display: block; width: 100%; height: 182px; object-fit: contain;
+  display: block; width: 100%; height: 230px; object-fit: contain;
   background: #fff; border-bottom: 1px solid var(--rule); padding: 10px;
 }
 .crops figcaption { padding: 12px 14px 13px; font-size: 12.5px; line-height: 1.5; }
@@ -1207,6 +1227,24 @@ def _e(text: object) -> str:
     return html.escape(str(text))
 
 
+def _clip(text: str, limit: int) -> str:
+    """Shorten to about `limit` characters, cutting between words.
+
+    Everywhere else on this page a shortened string ends in a space
+    and an ellipsis, so a reader can see there is more. One place cut
+    at a fixed character and simply stopped: the RAG paper's Table 3
+    caption is 194 characters and came out as "…'?' indicat", a letter
+    short of its own word. That does not read as a line too short for
+    the caption. It reads as a caption the engine failed to extract —
+    which it had not; Box 6 had all 194 of them.
+    """
+    flat = " ".join(text.split())
+    if len(flat) <= limit:
+        return flat
+    head = flat[:limit].rsplit(" ", 1)[0]
+    return f"{head} …"
+
+
 def _readout(value: object, label: str, tone: str = "") -> str:
     cls = f' class="{tone}"' if tone else ""
     return (
@@ -1459,6 +1497,25 @@ def _box6(result: IngestionResult, pid: str) -> str:
     for a in result.artifacts:
         kinds[a.artifact_type] = kinds.get(a.artifact_type, 0) + 1
 
+    def printed_kind(artifact) -> str:
+        """What to call this crop on screen.
+
+        Box 3 decides figure / table / equation from geometry, and on
+        a table ruled with white space rather than lines it can only
+        guess — the RAG paper's Table 3 came back typed `figure`. The
+        author did not guess: they printed "Table 3:" at the head of
+        the caption. Where the caption names a kind, that is the one
+        shown, which is the rule Box 7 already uses to bind a crop to
+        the text: trust the printed label over any measurement of
+        ours.
+
+        This changes the word on the card, not the stored
+        `artifact_type`. Members 2, 3 and 4 read the schema, and the
+        schema still reports what Box 3 measured.
+        """
+        label = caption_label(artifact.caption or "")
+        return label[0] if label else artifact.artifact_type.value
+
     tiles = []
     for i, a in enumerate(result.artifacts[:ARTIFACT_LIMIT]):
         caption = a.caption or "No caption printed beside it."
@@ -1466,14 +1523,17 @@ def _box6(result: IngestionResult, pid: str) -> str:
             picture = (
                 f"<a href='/paper/{pid}/artifact/{i}'>"
                 f"<img src='/paper/{pid}/artifact/{i}' loading='lazy' "
-                f"alt='{_e(caption[:80])}'></a>"
+                # the whole caption: alt text is read aloud, not laid out
+                f"alt='{_e(' '.join(caption.split()))}'></a>"
             )
         else:
             picture = "<div class='pad small soft'>Detected, not cropped.</div>"
         tiles.append(
             f"<figure>{picture}<figcaption>"
-            f"<span class='kind'>{_e(a.artifact_type.value)} · p{a.bbox.page + 1}</span>"
-            f"{_e(caption[:120])}</figcaption></figure>"
+            f"<span class='kind'>{_e(printed_kind(a))} · p{a.bbox.page + 1}</span>"
+            # whole, not clipped: a caption the panel can only half read
+            # is a caption they will assume was only half extracted
+            f"{_e(' '.join(caption.split()))}</figcaption></figure>"
         )
 
     summary = ", ".join(f"{n} {k.value}{'s' if n != 1 else ''}" for k, n in kinds.items())
@@ -1527,13 +1587,19 @@ def _box7(result: IngestionResult) -> str:
     for artifact in linked[:LINK_PREVIEW]:
         label = caption_label(artifact.caption)
         chunk = by_id.get(artifact.linked_chunk_ids[0])
-        where = f"{artifact.artifact_type.value} · p{artifact.bbox.page + 1}"
+        # `label` is the kind the author printed at the head of the
+        # caption. Prefer it to Box 3's guess, the same way the link
+        # below prefers it to any measurement of distance — and so
+        # that one crop is not called a figure here and a table in
+        # Box 6 above.
+        kind = label[0] if label else artifact.artifact_type.value
+        where = f"{kind} · p{artifact.bbox.page + 1}"
         if chunk is None:
             continue
         rows.append(
             f"<li class='link'>"
             f"<div class='from'><span class='kind'>{_e(where)}</span>"
-            f"<b>{_e(artifact.caption[:90])}</b></div>"
+            f"<b>{_e(_clip(artifact.caption, 90))}</b></div>"
             f"<div class='to'><span class='kind'>chunk {chunk.order_index} · "
             f"{_e(chunk.section.value.replace('_', ' '))}</span>"
             f"<p>{_marked(chunk.text, label)}</p></div></li>"
