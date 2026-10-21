@@ -51,7 +51,8 @@ code { background: #f1f4f9; border-radius: 4px; padding: 0 .3em; font-size: .9em
 
 .page { max-width: 1140px; margin: 0 auto; padding: 28px 20px 40px; display: flex; flex-direction: column; gap: 22px; }
 .stack { display: flex; flex-direction: column; gap: 22px; scroll-margin-top: 16px; }
-.footer { text-align: center; color: var(--muted); font-size: .82rem; padding: 10px 20px 34px; }
+.footer { display: flex; justify-content: center; flex-wrap: wrap; gap: 6px 28px; color: var(--muted);
+  font-size: .85rem; padding: 10px 20px 34px; }
 
 /* ---- notices -------------------------------------------------------------- */
 .notice { display: flex; align-items: flex-start; gap: 10px; border-radius: 10px; padding: 12px 14px;
@@ -296,3 +297,10 @@ kbd { font-family: var(--sans); font-size: .72rem; border: 1px solid rgba(255,25
   .score-num.after { font-size: 2.3rem; }
   .preview iframe, .preview-loading { height: 560px; }
 }
+
+/* single upload box (PDF or Word only) */
+.dropzone-wide { min-height: 190px; margin-bottom: 18px; }
+.dropzone.has-file { border-style: solid; border-color: var(--blue); background: var(--blue-soft); }
+.dropzone.is-locked { cursor: not-allowed; opacity: .7; }
+.dz-ok { display: inline-flex; align-items: center; justify-content: center; width: 40px; height: 40px;
+  border-radius: 50%; background: #e3f4ea; color: #1f7a45; }

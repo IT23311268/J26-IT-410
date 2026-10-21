@@ -1,30 +1,33 @@
-// PaperPicker.jsx - choose a paper (or upload one), set the options, press Compose.
+// PaperPicker.jsx - upload a PDF or Word paper, then press Compose.
+//
+// The engine settings are fixed for now (no Options box):
+//   Gemini on when a key is in .env, no polishing, US Letter paper.
 import { useRef, useState } from "react";
-import { IconDoc, IconGear, IconUpload, Spinner } from "./Icons.jsx";
+import { IconCheck, IconDoc, IconUpload, Spinner } from "./Icons.jsx";
 
-function Toggle({ label, help, checked, disabled, onChange }) {
-  return (
-    <label className={`toggle ${disabled ? "is-disabled" : ""}`} title={help}>
-      <input type="checkbox" checked={checked} disabled={disabled} onChange={(e) => onChange(e.target.checked)} />
-      <span className="toggle-track"><span className="toggle-thumb" /></span>
-      <span className="toggle-label">{label}</span>
-    </label>
-  );
-}
+const ALLOWED = [".pdf", ".docx"];
 
-export default function PaperPicker({ settings, uploads, paper, onPaper, onUpload, options, onOptions,
-  running, onCompose }) {
+export default function PaperPicker({ upload, onUpload, uploading, running, onCompose, onError }) {
   const [dragging, setDragging] = useState(false);
   const fileInput = useRef(null);
-  const papers = [...uploads.map((u) => ({ name: u.name, description: "Your uploaded file", label: u.label })),
-    ...(settings?.papers || [])];
+
+  function pick(file) {
+    if (!file) return;
+    const name = file.name.toLowerCase();
+    if (!ALLOWED.some((ext) => name.endsWith(ext))) {
+      onError("Please choose a PDF (.pdf) or Word (.docx) file.");
+      return;
+    }
+    onUpload(file);
+  }
 
   function drop(e) {
     e.preventDefault();
     setDragging(false);
-    const file = e.dataTransfer.files?.[0];
-    if (file) onUpload(file);
+    if (!running) pick(e.dataTransfer.files?.[0]);
   }
+
+  const browse = () => !running && fileInput.current?.click();
 
   return (
     <section className="card">
@@ -32,72 +35,43 @@ export default function PaperPicker({ settings, uploads, paper, onPaper, onUploa
         <span className="card-icon"><IconDoc /></span>
         <div>
           <h2>Research paper</h2>
-          <p className="card-sub">Choose a paper or upload your own PDF, Word file or verified content package.
-            The engine maps it to the IEEE skeleton, formats references and citations, places every figure
-            after its first mention, and scores the result.</p>
+          <p className="card-sub">Upload your research paper as a PDF or Word file. The engine maps it to the IEEE
+            skeleton, formats references and citations, places every figure after its first mention, and scores
+            the result.</p>
         </div>
       </div>
 
-      <div className="picker">
-        <div className="paper-list" role="radiogroup" aria-label="Paper">
-          {papers.map((p) => (
-            <button
-              key={p.name}
-              role="radio"
-              aria-checked={paper === p.name}
-              className={`paper-tile ${paper === p.name ? "is-selected" : ""}`}
-              onClick={() => onPaper(p.name)}
-              disabled={running}
-            >
-              <span className="paper-radio" />
-              <span className="paper-text">
-                <span className="paper-name">{p.label || p.name}</span>
-                <span className="paper-desc">{p.description}</span>
-              </span>
-            </button>
-          ))}
-          {!settings && <p className="muted">Loading papers…</p>}
-        </div>
-
-        <div
-          className={`dropzone ${dragging ? "is-dragging" : ""}`}
-          onDragOver={(e) => { e.preventDefault(); setDragging(true); }}
-          onDragLeave={() => setDragging(false)}
-          onDrop={drop}
-          onClick={() => fileInput.current?.click()}
-          onKeyDown={(e) => (e.key === "Enter" || e.key === " ") && fileInput.current?.click()}
-          role="button"
-          tabIndex={0}
-        >
-          <IconUpload width={26} height={26} />
-          <span className="dz-title">Drop a paper here, or click to browse</span>
-          <span className="dz-sub">PDF, Word (.docx) or content package (.json), up to 60 MB</span>
-          <input ref={fileInput} type="file" accept=".pdf,.docx,.json" hidden
-            onChange={(e) => e.target.files?.[0] && onUpload(e.target.files[0])} />
-        </div>
+      <div
+        className={`dropzone dropzone-wide ${dragging ? "is-dragging" : ""} ${upload ? "has-file" : ""} ${running ? "is-locked" : ""}`}
+        onDragOver={(e) => { e.preventDefault(); if (!running) setDragging(true); }}
+        onDragLeave={() => setDragging(false)}
+        onDrop={drop}
+        onClick={browse}
+        onKeyDown={(e) => (e.key === "Enter" || e.key === " ") && browse()}
+        role="button"
+        tabIndex={0}
+        aria-label="Upload a PDF or Word file"
+      >
+        {uploading ? (
+          <><Spinner /><span className="dz-title">Uploading…</span></>
+        ) : upload ? (
+          <>
+            <span className="dz-ok"><IconCheck width={22} height={22} /></span>
+            <span className="dz-title">{upload.label}</span>
+            <span className="dz-sub">Ready to compose · drop another file or click to change it</span>
+          </>
+        ) : (
+          <>
+            <IconUpload width={28} height={28} />
+            <span className="dz-title">Drop your paper here, or click to browse</span>
+            <span className="dz-sub">PDF or Word file (.pdf, .docx), up to 60 MB</span>
+          </>
+        )}
+        <input ref={fileInput} type="file" accept=".pdf,.docx" hidden
+          onChange={(e) => { pick(e.target.files?.[0]); e.target.value = ""; }} />
       </div>
 
-      <div className="options">
-        <span className="options-title"><IconGear /> Options</span>
-        <Toggle label="Use Gemini" checked={options.gemini} disabled={!settings?.gemini_key || running}
-          help="Gemini reads the references and drafts the abstract and index terms. Every answer is checked against the paper."
-          onChange={(v) => onOptions({ ...options, gemini: v, polish: v && options.polish })} />
-        <Toggle label="Polish the wording" checked={options.polish} disabled={!options.gemini || running}
-          help="Gemini rewrites each section; a rewrite is kept only if its numbers and citations are unchanged."
-          onChange={(v) => onOptions({ ...options, polish: v })} />
-        <div className="segmented" role="radiogroup" aria-label="Paper size">
-          {(settings?.paper_sizes || [{ key: "letter", label: "US Letter" }, { key: "a4", label: "A4" }]).map((s) => (
-            <button key={s.key} role="radio" aria-checked={options.paper_size === s.key} disabled={running}
-              className={options.paper_size === s.key ? "is-on" : ""}
-              onClick={() => onOptions({ ...options, paper_size: s.key })}>{s.label}</button>
-          ))}
-        </div>
-        <span className={`key-state ${settings?.gemini_key ? "ok" : "warn"}`}>
-          {settings ? (settings.gemini_key ? "Gemini key found in .env" : "No Gemini key in .env: rules only") : ""}
-        </span>
-      </div>
-
-      <button className="btn btn-primary btn-big" onClick={onCompose} disabled={!paper || running}>
+      <button className="btn btn-primary btn-big" onClick={onCompose} disabled={!upload || uploading || running}>
         {running ? <><Spinner /> Composing…</> : "Compose IEEE manuscript"}
       </button>
     </section>

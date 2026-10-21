@@ -9,9 +9,8 @@ import { IconAlert, IconCheck } from "./components/Icons.jsx";
 
 export default function App() {
   const [settings, setSettings] = useState(null);
-  const [paper, setPaper] = useState("");               // chosen file: "sample_paper.pdf" or "uploads/x.pdf"
-  const [uploads, setUploads] = useState([]);           // files the user uploaded this session
-  const [options, setOptions] = useState({ gemini: false, polish: false, paper_size: "letter" });
+  const [upload, setUpload] = useState(null);           // the uploaded paper: { name: "uploads/x.pdf", label }
+  const [uploading, setUploading] = useState(false);
   const [job, setJob] = useState(null);                 // { id, status, stages, error, details }
   const [result, setResult] = useState(null);
   const [notice, setNotice] = useState(null);           // { kind: "ok" | "error", text }
@@ -20,11 +19,7 @@ export default function App() {
   // what the server knows: papers in data/input, whether a Gemini key is set
   useEffect(() => {
     getSettings()
-      .then((s) => {
-        setSettings(s);
-        setOptions((o) => ({ ...o, gemini: s.gemini_key }));
-        if (s.papers.length) setPaper(s.papers[0].name);
-      })
+      .then(setSettings)
       .catch(() => setNotice({ kind: "error", text: "Cannot reach the engine. Is python server.py running?" }));
   }, []);
 
@@ -52,13 +47,16 @@ export default function App() {
   }, [job?.id, job?.status]);
 
   async function handleUpload(file) {
+    setUploading(true);
+    setNotice(null);
     try {
       const saved = await uploadPaper(file);
-      setUploads((u) => [{ name: saved.name, label: saved.label }, ...u.filter((x) => x.name !== saved.name)]);
-      setPaper(saved.name);
+      setUpload({ name: saved.name, label: saved.label });
       setNotice({ kind: "ok", text: `Uploaded ${saved.label}. Press “Compose IEEE manuscript” to start.` });
     } catch (err) {
       setNotice({ kind: "error", text: err.message });
+    } finally {
+      setUploading(false);
     }
   }
 
@@ -66,7 +64,10 @@ export default function App() {
     setResult(null);
     setNotice(null);
     try {
-      const { job_id } = await startJob({ paper, ...options });
+      // fixed settings for now: Gemini when a key is in .env, no polishing, US Letter
+      const { job_id } = await startJob({
+        paper: upload.name, gemini: Boolean(settings?.gemini_key), polish: false, paper_size: "letter",
+      });
       setJob({ id: job_id, status: "running", stages: [] });
     } catch (err) {
       setNotice({ kind: "error", text: err.message });
@@ -88,15 +89,12 @@ export default function App() {
         )}
 
         <PaperPicker
-          settings={settings}
-          uploads={uploads}
-          paper={paper}
-          onPaper={setPaper}
+          upload={upload}
           onUpload={handleUpload}
-          options={options}
-          onOptions={setOptions}
+          uploading={uploading}
           running={running}
           onCompose={compose}
+          onError={(text) => setNotice({ kind: "error", text })}
         />
 
         {job && <Stages stages={job.stages} status={job.status} details={job.details} />}
@@ -108,8 +106,9 @@ export default function App() {
         )}
       </main>
       <footer className="footer">
-        IEEE Manuscript Composition Engine · Component 4 of J26-IT-410, An AI Research Agent Pipeline Using RAG ·
-        Senarath S.P.J.H (IT21245442)
+        <span>IEEE manuscript composition engine</span>
+        <span>J26-IT-410</span>
+        <span>Senarath S P J H</span>
       </footer>
     </>
   );
