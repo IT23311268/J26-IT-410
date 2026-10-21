@@ -1,0 +1,8 @@
+evaluation:
+  enabled: false
+  split: temporal
+  # Deliberately unspecified; no benchmark or ground truth has been acquired.
+  train_end: null
+  validation_end: null
+  test_end: null
+  ground_truth_path: null

@@ -1,0 +1,25 @@
+includes:
+  - data.yaml
+  - citation_intent.yaml
+  - topic_model.yaml
+  - graph.yaml
+  - gnn.yaml
+  - gap_scoring.yaml
+  - evaluation.yaml
+project:
+  name: ci-hgnn-rgd
+  contract_version: "1.0"
+run:
+  seed: 42
+  # Example observation policy, not evidence that a dataset snapshot exists.
+  cutoff: "2025-12-31T23:59:59Z"
+  device: auto
+  deterministic: true
+  log_level: INFO
+paths:
+  raw: data/raw
+  interim: data/interim
+  processed: data/processed
+  models: artifacts/models
+  graphs: artifacts/graphs
+  reports: artifacts/reports

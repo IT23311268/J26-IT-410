@@ -1,0 +1,9 @@
+entity_resolution:
+  max_candidates: 50
+  max_cluster_size: 1000
+  # Heuristic ranking threshold; never calibrated identity probability.
+  probable_title_threshold: 0.94
+  automatic_merge: EXACT_VERIFIED_ONLY
+  author_matching: source_local_only
+  duplicate_handling: retain_all_with_decisions
+  conflict_handling: retain_separate

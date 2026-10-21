@@ -1,0 +1,5 @@
+gap_scoring:
+  enabled: false
+  formula_version: null
+  interpretation: unvalidated_hypothesis
+  investigation_evidence: independent_of_citation_frequency

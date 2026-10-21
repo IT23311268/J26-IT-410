@@ -1,0 +1,5 @@
+graph:
+  enabled: false
+  schema_version: "1.0"
+  include_optional_nodes: false
+  missing_intent: preserve_unknown

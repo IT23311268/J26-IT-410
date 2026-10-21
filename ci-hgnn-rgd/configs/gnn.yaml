@@ -1,0 +1,4 @@
+gnn:
+  enabled: false
+  architecture: unselected
+  fit_on: train_only

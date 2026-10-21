@@ -1,0 +1,12 @@
+# Stage 04 citation-intent environment verified on CPython 3.11 / Windows x64.
+# Install PyTorch from the official CPU or CUDA index appropriate to the host
+# before (or together with) the remaining packages.  The selected accelerator
+# wheel is intentionally environment-specific and is therefore bounded rather
+# than hard-coded to a CUDA build in pyproject.toml.
+numpy==2.4.6
+scikit-learn==1.9.1
+matplotlib==3.11.2
+safetensors>=0.4.3,<1
+transformers==4.57.6
+torch>=2.6,<2.7
+pyarrow==26.0.0

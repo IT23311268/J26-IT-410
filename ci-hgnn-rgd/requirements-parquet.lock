@@ -1,0 +1,3 @@
+# Optional Stage 03 storage extra verified on CPython 3.11.9 / Windows x64.
+# Official binary wheel only; no graph or ML stack is installed by this extra.
+pyarrow==26.0.0

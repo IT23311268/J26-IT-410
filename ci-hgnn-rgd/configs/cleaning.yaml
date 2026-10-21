@@ -1,0 +1,5 @@
+cleaning:
+  unicode_form: NFC
+  preserve_raw: true
+  quarantine_invalid: true
+  repair_suspect_encoding: false

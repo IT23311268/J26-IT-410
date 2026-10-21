@@ -1,0 +1,11 @@
+include README.md
+include .gitignore .env.example requirements-dev.lock
+include requirements-parquet.lock
+include requirements-stage04.lock
+recursive-include configs *.yaml
+recursive-include docs *.md
+recursive-include tests *.py
+recursive-include scripts *.py
+recursive-include notebooks *.md
+recursive-include data .gitkeep
+recursive-include artifacts .gitkeep

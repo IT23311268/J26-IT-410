@@ -1,0 +1,6 @@
+citation_intent:
+  enabled: false
+  taxonomy: scicite
+  classes: [Background, Method, Result]
+  model_id: null
+  model_revision: null

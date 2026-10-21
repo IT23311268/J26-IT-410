@@ -1,0 +1,42 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "ci-hgnn-rgd"
+version = "0.4.0"
+description = "Reproducible scholarly data controls and citation-intent classification for CI-HGNN-RGD"
+readme = "README.md"
+requires-python = ">=3.11,<3.12"
+dependencies = ["pydantic>=2.10,<3", "PyYAML>=6.0.2,<7"]
+
+[project.optional-dependencies]
+dev = ["pytest>=8.3,<10", "ruff>=0.9,<1", "build>=1.2,<2"]
+parquet = ["pyarrow==26.0.0"]
+citation-intent = [
+    "numpy==2.4.6",
+    "scikit-learn==1.9.1",
+    "matplotlib==3.11.2",
+    "safetensors>=0.4.3,<1",
+    "transformers==4.57.6",
+    "torch>=2.6,<2.7",
+]
+
+[project.scripts]
+ci-hgnn-rgd = "ci_hgnn_rgd.cli:main"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-ra --strict-markers -m 'not integration'"
+markers = ["integration: requires explicitly configured genuine local dataset files"]
+
+[tool.ruff]
+target-version = "py311"
+line-length = 100
+extend-exclude = ["artifacts/**", "data/**", ".venv"]
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "B", "UP"]

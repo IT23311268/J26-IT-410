@@ -1,0 +1,4 @@
+topic_model:
+  enabled: false
+  algorithm: unselected
+  fit_on: train_only

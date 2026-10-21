@@ -1,0 +1,17 @@
+data:
+  allow_downloads: false
+  require_verified_identifier_mapping: true
+  # No dataset has been acquired; versions/checksums must be verified in Stage 02.
+  datasets:
+    - dataset_id: scicite
+      version_id: null
+      sha256: null
+    - dataset_id: arxiv-metadata
+      version_id: null
+      sha256: null
+    - dataset_id: mag-year-h2gb
+      version_id: null
+      sha256: null
+    - dataset_id: ogbn-arxiv
+      version_id: null
+      sha256: null

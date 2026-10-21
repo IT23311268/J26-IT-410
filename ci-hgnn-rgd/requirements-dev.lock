@@ -1,0 +1,20 @@
+# Exact Stages 01-03 core development environment on Windows x64 / CPython 3.11.9.
+# Optional Parquet support is pinned separately in requirements-parquet.lock.
+# Version pins only; not a cross-platform or hash-verified lock. Install package separately.
+PyYAML==6.0.3
+Pygments==2.21.0
+annotated-types==0.8.0
+build==1.6.1
+colorama==0.4.6
+iniconfig==2.3.1
+packaging==26.3
+pluggy==1.7.0
+pydantic==2.14.1
+pydantic_core==2.50.1
+pyproject_hooks==1.3.3
+pytest==9.1.1
+ruff==0.17.1
+setuptools==84.0.0
+typing-inspection==0.4.4
+typing_extensions==4.16.0
+wheel==0.48.0

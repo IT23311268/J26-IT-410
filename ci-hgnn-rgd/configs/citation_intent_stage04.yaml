@@ -1,0 +1,93 @@
+# Stage 04 only.  The Stage 01 base citation_intent.yaml remains frozen with enabled: false.
+# This separate config is intentionally additive so base configuration validation stays read-only.
+schema_version: "1.0"
+dataset:
+  name: scicite
+  source: stage03
+  stage03_output_dir: data/processed/stage03
+  stage03_run: null
+  citation_context_table: citation_contexts
+  preserve_official_splits: true
+  exclude_quarantined: true
+  allow_synthetic: false
+labels:
+  background: 0
+  method: 1
+  result: 2
+model:
+  name: allenai/scibert_scivocab_uncased
+  revision: 952d056ace307abd2cda7cee822a1d608deb20ed
+  num_labels: 3
+  max_length: 256
+  trust_remote_code: false
+training:
+  mode: full
+  epochs: 4
+  learning_rate: 0.00002
+  train_batch_size: 16
+  eval_batch_size: 32
+  gradient_accumulation_steps: 1
+  weight_decay: 0.01
+  warmup_ratio: 0.1
+  max_grad_norm: 1.0
+  seed: 42
+  multiple_seeds: []
+  deterministic: true
+  device: auto
+  precision: auto
+  early_stopping_metric: macro_f1
+  early_stopping_patience: 2
+  min_delta: 0.0
+  class_weighting: none
+  class_weight_smoothing: 1.0
+  weighted_sampling: false
+  num_workers: 0
+  quick_train_limit: 768
+  min_available_ram_gib: 3.0
+  min_available_gpu_gib: 2.0
+search:
+  enabled: false
+  max_runs: 6
+  # Opt in with --search. Every candidate uses identical train/dev records and seeds.
+  candidates:
+    - class_weighting: none
+    - class_weighting: inverse
+baselines:
+  models: [majority, tfidf_logistic_regression, tfidf_linear_svm]
+  max_features: 30000
+  ngram_min: 1
+  ngram_max: 2
+  min_document_frequency: 1
+  max_document_frequency: 1.0
+  max_iter: 1000
+  candidate_c: [0.5, 1.0, 2.0]
+  class_weighting_candidates: [none, inverse]
+  class_weight_smoothing: 1.0
+evaluation:
+  primary_metric: macro_f1
+  preserve_test_holdout: true
+  leakage_audit: true
+  near_duplicate_threshold: 0.94
+  near_candidates_per_context: 20
+  max_near_comparisons: 100000
+  zero_division: 0
+  bootstrap_resamples: 0
+  bootstrap_confidence: 0.95
+  sensitivity_exclude_cross_split_text_overlap: false
+calibration:
+  enabled: false
+  method: temperature_scaling
+  split: dev
+  low_confidence_threshold: 0.5
+  ece_bins: 15
+inference:
+  batch_size: 32
+  include_probabilities: true
+  include_provenance: true
+  include_text_excerpt: false
+  text_excerpt_characters: 240
+outputs:
+  model_root: artifacts/models/citation_intent
+  report_root: artifacts/reports/stage04
+  work_root: data/processed/stage04
+offline: false

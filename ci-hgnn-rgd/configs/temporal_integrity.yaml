@@ -1,0 +1,8 @@
+temporal_integrity:
+  policy: STRICT_POINT_IN_TIME
+  # Null inherits the existing run.cutoff; availability still needs source evidence.
+  cutoff: null
+  split_policy: preserve_official
+  near_duplicate_threshold: 0.94
+  near_candidates_per_context: 20
+  max_near_comparisons: 100000

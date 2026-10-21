@@ -1,0 +1,18 @@
+schema_version: "1.0"
+includes:
+  - cleaning.yaml
+  - entity_resolution.yaml
+  - temporal_integrity.yaml
+integration:
+  inputs: []
+  discover_stage02: true
+  output_dir: data/processed/stage03
+  report_dir: artifacts/reports
+  batch_size: 1000
+  memory_budget_mb: 128
+  max_records: null
+  seed: 42
+  storage_format: auto
+  offline: true
+  enrichment: local_metadata_only
+  overwrite_runs: false
