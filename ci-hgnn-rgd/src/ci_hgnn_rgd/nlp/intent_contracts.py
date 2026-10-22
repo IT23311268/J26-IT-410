@@ -130,6 +130,8 @@ class CitationIntentEvidence(FrozenModel):
     input_order: Annotated[StrictInt, Field(ge=0)] = 0
     prediction_status: Literal["completed", "skipped_empty_text"] = "completed"
     truncation_applied: bool = False
+    text_reference: str | None = None
+    text_excerpt: str | None = None
 
     @field_validator("prediction_timestamp")
     @classmethod

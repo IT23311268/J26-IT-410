@@ -46,11 +46,13 @@ def calculate_class_weights(
     labels: Sequence[int], *, strategy: str, smoothing: float = 1.0
 ) -> dict[int, float] | None:
     """Calculate train-only class weights for the exact three-class taxonomy."""
+    if any(type(label) is not int or label not in {0, 1, 2} for label in labels):
+        raise IntentDataError("class weights require fixed SciCite class IDs 0, 1, 2")
     if strategy == "none":
         return None
     if strategy not in {"inverse", "smoothed"}:
         raise IntentDataError("class-weight strategy must be none, inverse, or smoothed")
-    if smoothing <= 0:
+    if smoothing <= 0 or not math.isfinite(smoothing):
         raise IntentDataError("class-weight smoothing must be positive")
     counts = [labels.count(label) for label in range(3)]
     if any(count == 0 for count in counts):

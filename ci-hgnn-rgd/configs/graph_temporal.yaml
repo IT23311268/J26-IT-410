@@ -1,0 +1,7 @@
+temporal:
+  # Null inherits the actual Stage 03 policy and cutoff; it never implies strictness.
+  policy: null
+  cutoff: null
+  snapshot_id: null
+  model_availability_policy: require_produced_by_cutoff
+  split_cutoffs: {}

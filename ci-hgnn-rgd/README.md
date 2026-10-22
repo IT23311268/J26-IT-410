@@ -1,7 +1,16 @@
 # CI-HGNN-RGD
 
+Stage 06 now constructs versioned scholarly graphs with validated PyG HeteroData
+exports and evidence/temporal audits. See [Stage 06](docs/stage06.md) for the actual
+2,000-paper graph, commands, missing citation links and scientific limitations.
+
+Stage 05 now adds scientific topic modelling and independent investigation-evidence
+workflows. A bounded 2,000-paper arXiv corpus now supports real quantized SPECTER2
+embeddings and BERTopic/NMF/LDA experiments using the local low-memory profile.
+See [Stage 05](docs/stage05.md).
+
 Citation-Intent-Aware Heterogeneous Graph Neural Network for Research-Gap Discovery.
-**Stages 01–04 are implemented.** Stages 02–03 provide acquisition, streaming
+**Stages 01–06 are implemented.** Stages 02–03 provide acquisition, streaming
 staging, schema/quality checks, conservative identity/provenance controls, and
 temporal audits. Stage 04 adds SciCite citation-intent data views, leakage audits,
 baselines, SciBERT fine-tuning infrastructure, safe artifacts, inference, and
@@ -11,7 +20,7 @@ See [Stage 02 commands, findings and limitations](docs/stage02.md) for the data 
 See [Stage 03 cleaning, identity, integration and temporal controls](docs/stage03.md)
 for versioned canonical staging, offline commands and the limits of actual linkage.
 See [Stage 04 citation-intent classification](docs/stage04.md) for the actual data
-view, model boundary, baseline run, controls, reports, and unexecuted SciBERT work.
+view, model boundary, baseline results, controls, reports, and SciBERT training status.
 
 ## Research objective and hypothesis
 
@@ -50,7 +59,8 @@ The core package remains lightweight. Stage 04 adds an opt-in `citation-intent`
 extra for NumPy, scikit-learn, Matplotlib, safetensors, Transformers, and a bounded
 PyTorch version. Install the host-appropriate CPU/CUDA PyTorch wheel, then use
 `requirements-stage04.lock` or `pip install -e ".[citation-intent,parquet]"`.
-PyG, BERTopic, sentence-transformers, Neo4j, and FastAPI remain later-stage choices.
+The `topics` and `graph` extras provide the Stage 05 and Stage 06 stacks.
+Neo4j and FastAPI remain optional future choices.
 The local Stage 04 environment was verified with CPU PyTorch; CUDA execution remains
 supported by the code but requires a compatible CUDA PyTorch installation.
 
@@ -77,6 +87,7 @@ split, and test evaluation requires a separate command after selection is frozen
 .\.venv\Scripts\ci-hgnn-rgd.exe citation-intent audit-leakage
 .\.venv\Scripts\ci-hgnn-rgd.exe citation-intent train-baselines
 .\.venv\Scripts\ci-hgnn-rgd.exe citation-intent train --model scibert --mode quick --offline
+.\.venv\Scripts\ci-hgnn-rgd.exe citation-intent train --model scibert --mode full --offline
 .\.venv\Scripts\ci-hgnn-rgd.exe citation-intent evaluate --run-id RUN_ID --split dev
 .\.venv\Scripts\ci-hgnn-rgd.exe citation-intent evaluate --run-id RUN_ID --split test
 .\.venv\Scripts\ci-hgnn-rgd.exe citation-intent report --run-id RUN_ID
@@ -148,16 +159,16 @@ This implementation sequence is a planning boundary, not a validated research pr
 | 02 | Dataset acquisition and source schema audits | Implemented; real-data blockers documented |
 | 03 | Entity resolution, provenance and temporal splits | Implemented; genuine SciCite integration is partial |
 | 04 | Citation-intent classification | Implemented; real SciCite baseline run and SciBERT training path documented |
-| 05 | Topic identification | Stub |
-| 06 | Independent direct-investigation evidence | Stub |
-| 07 | Heterogeneous graph construction | Stub |
-| 08 | Heterogeneous graph representation learning | Stub |
+| 05 | Topics and independent investigation evidence | Implemented; bounded real-corpus experiments completed |
+| 06 | Heterogeneous scholarly graph construction | Implemented; partial real graph and audits |
+| 07 | Heterogeneous graph representation learning | Stub |
+| 08 | Research-gap hypothesis scoring | Stub |
 | 09 | Baselines and ablation protocols | Stub |
-| 10 | Citation-asymmetry hypothesis scoring | Stub |
+| 10 | Evidence sensitivity and robustness analysis | Stub |
 | 11 | Independent temporal and expert evaluation | Stub |
 | 12 | Evidence explanations and reporting | Stub |
 
-Stages 05–12 interfaces raise `NotImplementedError`. Stage 04 preserves official
+Stages 07–12 interfaces raise `NotImplementedError`. Stage 04 preserves official
 SciCite assignments, fits learned baseline vocabulary on train only, selects on dev,
 and reserves held-out test evaluation for an explicit command. Temporal splitting
 must precede fitting any vocabulary, topic model, normalization, embeddings, intent

@@ -168,6 +168,11 @@ def test_leakage_audit_reports_overlap_without_reassigning_splits(tmp_path):
     assert audit["resolved_paper_identity_overlap_groups"] == 1
     assert audit["near_duplicate_cross_split_pairs"] >= 1
     assert audit["near_audit"]["exhaustive"] is False
+    assert len(audit["affected_records"]["source_record_id"]) == 2
+    assert (
+        len(audit["affected_records"]["near_duplicate_pairs"])
+        == audit["near_duplicate_cross_split_pairs"]
+    )
 
 
 def test_quick_subset_and_chronological_validation_are_deterministic():
@@ -190,21 +195,30 @@ def test_quick_subset_and_chronological_validation_are_deterministic():
             "background",
             "date-one",
             "one",
-            temporal_eligibility={"eligible": True, "evidence": {"publication_date": "2020-01-01"}},
+            temporal_eligibility={
+                "eligible": True,
+                "evidence": {"publication_date": "2020-01-01", "available_at": "2020-01-02"},
+            },
         ),
         record(
             "dev",
             "method",
             "date-two",
             "two",
-            temporal_eligibility={"eligible": True, "evidence": {"publication_date": "2021-01-01"}},
+            temporal_eligibility={
+                "eligible": True,
+                "evidence": {"publication_date": "2021-01-01", "available_at": "2021-01-02"},
+            },
         ),
         record(
             "test",
             "result",
             "date-three",
             "three",
-            temporal_eligibility={"eligible": True, "evidence": {"publication_date": "2022-01-01"}},
+            temporal_eligibility={
+                "eligible": True,
+                "evidence": {"publication_date": "2022-01-01", "available_at": "2022-01-02"},
+            },
         ),
     )
     chronological = chronological_split_if_supported(
@@ -219,3 +233,44 @@ def test_quick_subset_and_chronological_validation_are_deterministic():
         chronological_split_if_supported(
             rows[:3], train_end="2020-06-01", dev_end="2021-06-01", test_end="2022-06-01"
         )
+
+
+@pytest.mark.parametrize(
+    "future_field", ["available_at", "feature_available_at", "enrichment_date"]
+)
+def test_chronological_validation_rechecks_each_cutoff(future_field):
+    rows = tuple(
+        record(
+            split,
+            label,
+            split,
+            "synthetic context",
+            temporal_eligibility={
+                "eligible": True,
+                "evidence": {
+                    "publication_date": f"{year}-01-01",
+                    "available_at": f"{year}-01-02",
+                    **({future_field: "2022-03-01"} if split == "train" else {}),
+                },
+            },
+        )
+        for split, label, year in (
+            ("train", "background", 2020),
+            ("dev", "method", 2021),
+            ("test", "result", 2022),
+        )
+    )
+    with pytest.raises(IntentDataError, match="not supported"):
+        chronological_split_if_supported(
+            rows, train_end="2020-06-01", dev_end="2021-06-01", test_end="2022-06-01"
+        )
+
+
+def test_bootstrap_unknown_groups_remain_independent_units():
+    from ci_hgnn_rgd.nlp.intent_metrics import _bootstrap_units, calibration_metrics
+
+    assert len(_bootstrap_units(2, [None, "__record__:0"])) == 2
+    result = bootstrap_macro_f1([0, 1, 2], [0, 1, 2], groups=[None] * 3, n_resamples=5)
+    assert result["resampling_unit"] == "record"
+    with pytest.raises(IntentDataError, match="at least two bins"):
+        calibration_metrics([0], [[1.0, 0.0, 0.0]], bins=0)

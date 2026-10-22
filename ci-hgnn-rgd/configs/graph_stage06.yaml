@@ -1,0 +1,21 @@
+# graph.yaml remains the frozen Stage 01 section.
+schema_version: stage06-v1
+includes: [graph_features.yaml, graph_temporal.yaml]
+inputs:
+  stage03_root: data/processed/stage03-topics
+  stage05_root: data/processed/stage05
+  intent_model_root: artifacts/models/citation_intent
+output_dir: data/processed/stage06
+report_dir: artifacts/reports/stage06
+include_authors: true
+include_topics: true
+include_research_fields: false
+citation_intent_representation: edge_attributes
+add_reverse_message_passing_edges: true
+export_predicted_relations_separately: true
+allow_rule_candidate_edges: false
+max_papers: 10000
+max_edges: 1000000
+batch_size: 256
+sqlite_cache_mib: 16
+offline: true

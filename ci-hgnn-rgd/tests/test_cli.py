@@ -95,7 +95,7 @@ def test_show_pipeline_has_twelve_stages_and_only_authorized_stages_implemented(
     assert result.returncode == 0, result.stderr
     stages = json.loads(result.stdout)["stages"]
     assert [stage["number"] for stage in stages] == list(range(1, 13))
-    assert [stage["number"] for stage in stages if stage["implemented"]] == [1, 2, 3, 4]
+    assert [stage["number"] for stage in stages if stage["implemented"]] == [1, 2, 3, 4, 5, 6]
 
 
 def test_module_imports_neither_download_nor_import_heavy_backends(tmp_path):

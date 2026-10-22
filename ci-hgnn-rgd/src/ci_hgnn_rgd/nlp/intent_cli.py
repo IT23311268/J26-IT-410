@@ -29,9 +29,10 @@ from .intent_data import (
 )
 from .intent_inference import (
     InferenceInputError,
+    iter_context_predictions,
+    iter_prediction_inputs,
     load_predictor,
     predict_contexts,
-    read_prediction_inputs,
     write_prediction_export,
 )
 from .intent_metrics import bootstrap_macro_f1, evaluate_predictions
@@ -91,10 +92,17 @@ def register_parser(commands: argparse._SubParsersAction) -> None:
     _add_config_options(train)
     train.add_argument("--model", choices=("scibert",), required=True)
     train.add_argument("--mode", choices=("quick", "full"))
+    train.add_argument(
+        "--low-memory",
+        action="store_true",
+        help="CPU microbatch 1, gradient checkpointing and factored Adafactor optimizer state",
+    )
     train.add_argument("--device", choices=("auto", "cpu", "cuda", "mps"))
     train.add_argument("--batch-size", type=_positive)
     train.add_argument("--seed", type=int)
-    train.add_argument("--search", action="store_true", help="run the configured bounded dev search")
+    train.add_argument(
+        "--search", action="store_true", help="run the configured bounded dev search"
+    )
     train.add_argument("--output-dir", type=Path, help="Stage 04 model-run root")
     train.add_argument("--resume", help="compatible untested run for a model-only warm start")
     train.add_argument("--max-records", type=_positive, help="quick-mode train subset cap")
@@ -188,6 +196,18 @@ def _inside_project(path: Path, root: Path, *, option: str) -> Path:
 def _load_config(args: argparse.Namespace, root: Path) -> Stage04Config:
     config = load_stage04_config(args.config, root)
     values = config.model_dump(mode="python")
+    if getattr(args, "low_memory", False):
+        values["training"].update(
+            optimizer="adafactor",
+            gradient_checkpointing=True,
+            cpu_threads=2,
+            device="cpu",
+            precision="fp32",
+            cpu_train_batch_size_cap=1,
+            eval_batch_size=1,
+            min_available_ram_gib=0.25,
+            min_available_commit_gib=3.0,
+        )
     if getattr(args, "offline", False):
         values["offline"] = True
     if getattr(args, "seed", None) is not None:
@@ -207,6 +227,10 @@ def _load_config(args: argparse.Namespace, root: Path) -> Stage04Config:
         getattr(args, "max_records", None) is not None
         and getattr(args, "intent_command", None) == "train"
     ):
+        if values["training"]["mode"] != "quick":
+            raise IntentCliError(
+                "--max-records requires --mode quick; full training uses all records"
+            )
         values["training"]["quick_train_limit"] = args.max_records
     if getattr(args, "output_dir", None) is not None:
         output = _inside_project(args.output_dir, root, option="--output-dir")
@@ -403,15 +427,18 @@ def _train_scibert(config: Stage04Config, root: Path, args: argparse.Namespace) 
     for index in sorted({item["candidate_index"] for item in completed}):
         runs = [item for item in completed if item["candidate_index"] == index]
         scores = [item["validation_metrics"]["macro_f1"] for item in runs]
-        summaries.append({
-            "candidate_index": index,
-            "parameters": config.search.candidates[index].model_dump(exclude_none=True)
-            if config.search.enabled else {},
-            "seeds": [item["seed"] for item in runs],
-            "run_ids": [item["run_id"] for item in runs],
-            "mean_dev_macro_f1": fmean(scores),
-            "std_dev_macro_f1": pstdev(scores) if len(scores) > 1 else 0.0,
-        })
+        summaries.append(
+            {
+                "candidate_index": index,
+                "parameters": config.search.candidates[index].model_dump(exclude_none=True)
+                if config.search.enabled
+                else {},
+                "seeds": [item["seed"] for item in runs],
+                "run_ids": [item["run_id"] for item in runs],
+                "mean_dev_macro_f1": fmean(scores),
+                "std_dev_macro_f1": pstdev(scores) if len(scores) > 1 else 0.0,
+            }
+        )
     selected = max(summaries, key=lambda item: item["mean_dev_macro_f1"])
     selection = {
         "metric": "mean_dev_macro_f1",
@@ -684,6 +711,8 @@ def _predict(config: Stage04Config, args: argparse.Namespace) -> tuple[dict, int
         model_info,
         batch_size=args.batch_size or config.inference.batch_size,
         low_confidence_threshold=config.calibration.low_confidence_threshold,
+        include_text_excerpt=config.inference.include_text_excerpt,
+        text_excerpt_characters=config.inference.text_excerpt_characters,
     )
     return {"prediction": predictions[0].model_dump(mode="json")}, 0
 
@@ -694,21 +723,36 @@ def _predict_file(config: Stage04Config, root: Path, args: argparse.Namespace) -
     destination = _inside_project(args.output, root, option="--output")
     if destination.exists():
         raise IntentCliError("--output already exists; prediction exports are never overwritten")
-    rows = read_prediction_inputs(source)
-    predictions = predict_contexts(
+    batch_size = args.batch_size or config.inference.batch_size
+    rows = iter_prediction_inputs(source, batch_size=batch_size)
+    predictions = iter_context_predictions(
         rows,
         predictor,
         model_info,
-        batch_size=args.batch_size or config.inference.batch_size,
+        batch_size=batch_size,
         low_confidence_threshold=config.calibration.low_confidence_threshold,
+        include_text_excerpt=config.inference.include_text_excerpt,
+        text_excerpt_characters=config.inference.text_excerpt_characters,
     )
-    output = write_prediction_export(destination, predictions)
+    summary = {"records": 0, "truncated": 0, "skipped_empty_text": 0, "linked": 0}
+    output = write_prediction_export(destination, _count_predictions(predictions, summary))
     return {
         "status": "predicted_file",
         "input": str(source),
         "output": str(output),
-        "predictions": len(predictions),
+        "predictions": summary["records"],
+        "truncated_contexts": summary["truncated"],
+        "skipped_empty_contexts": summary["skipped_empty_text"],
     }, 0
+
+
+def _count_predictions(predictions, summary: dict):
+    for item in predictions:
+        summary["records"] += 1
+        summary["truncated"] += item.truncation_applied
+        summary["skipped_empty_text"] += item.prediction_status == "skipped_empty_text"
+        summary["linked"] += item.citing_paper_id is not None and item.cited_paper_id is not None
+        yield item
 
 
 def _export_graph_evidence(
@@ -725,25 +769,28 @@ def _export_graph_evidence(
     )
     if destination.exists():
         raise IntentCliError("graph-evidence export already exists; it is never overwritten")
-    predictions = predict_contexts(
-        list(prepared.all_records),
+    predictions = iter_context_predictions(
+        (row for split in ("train", "dev", "test") for row in prepared.split(split)),
         predictor,
         model_info,
         batch_size=args.batch_size or config.inference.batch_size,
         low_confidence_threshold=config.calibration.low_confidence_threshold,
+        include_text_excerpt=config.inference.include_text_excerpt,
+        text_excerpt_characters=config.inference.text_excerpt_characters,
     )
-    output = write_prediction_export(destination, predictions)
-    linked = sum(
-        item.citing_paper_id is not None and item.cited_paper_id is not None for item in predictions
-    )
+    summary = {"records": 0, "truncated": 0, "skipped_empty_text": 0, "linked": 0}
+    output = write_prediction_export(destination, _count_predictions(predictions, summary))
+    linked = summary["linked"]
     export_manifest = {
         "schema_version": "1.0",
         "stage": 4,
         "run_id": manifest["run_id"],
         "dataset_fingerprint": prepared.dataset_manifest["dataset_fingerprint"],
-        "records": len(predictions),
+        "records": summary["records"],
+        "truncated_contexts": summary["truncated"],
+        "skipped_empty_contexts": summary["skipped_empty_text"],
         "verified_paper_pair_links": linked,
-        "unlinked_contexts": len(predictions) - linked,
+        "unlinked_contexts": summary["records"] - linked,
         "graph_created": False,
         "integration_policy": (
             "Each record is citation-context evidence. Later stages may attach a record "
@@ -769,9 +816,10 @@ def _export_graph_evidence(
         "run_id": manifest["run_id"],
         "output": str(output),
         "manifest": str(manifest_path),
-        "records": len(predictions),
+        "records": summary["records"],
+        "truncated_contexts": summary["truncated"],
         "verified_paper_pair_links": linked,
-        "unlinked_contexts": len(predictions) - linked,
+        "unlinked_contexts": summary["records"] - linked,
         "graph_created": False,
     }, 0
 

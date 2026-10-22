@@ -1,0 +1,488 @@
+{
+  "notice": "Synthetic Demo Data \u2014 Not Research Findings",
+  "nodes": [
+    {
+      "id": "demo:paper:1",
+      "type": "paper",
+      "label": "Illustrative graph learning study",
+      "year": 2021,
+      "abstract": "A synthetic paper record created exclusively to demonstrate dashboard interactions.",
+      "keywords": [],
+      "provenance": [
+        {
+          "source": "Hand-authored UI fixture",
+          "synthetic": true,
+          "notice": "Synthetic Demo Data \u2014 Not Research Findings"
+        }
+      ],
+      "metadata": {
+        "authors": [
+          "Demo Author A"
+        ]
+      },
+      "synthetic": true,
+      "notice": "Synthetic Demo Data \u2014 Not Research Findings"
+    },
+    {
+      "id": "demo:paper:2",
+      "type": "paper",
+      "label": "Illustrative scholarly network study",
+      "year": 2022,
+      "abstract": "A synthetic paper record created exclusively to demonstrate dashboard interactions.",
+      "keywords": [],
+      "provenance": [
+        {
+          "source": "Hand-authored UI fixture",
+          "synthetic": true,
+          "notice": "Synthetic Demo Data \u2014 Not Research Findings"
+        }
+      ],
+      "metadata": {
+        "authors": [
+          "Demo Author B"
+        ]
+      },
+      "synthetic": true,
+      "notice": "Synthetic Demo Data \u2014 Not Research Findings"
+    },
+    {
+      "id": "demo:paper:3",
+      "type": "paper",
+      "label": "Illustrative citation context study",
+      "year": 2023,
+      "abstract": "A synthetic paper record created exclusively to demonstrate dashboard interactions.",
+      "keywords": [],
+      "provenance": [
+        {
+          "source": "Hand-authored UI fixture",
+          "synthetic": true,
+          "notice": "Synthetic Demo Data \u2014 Not Research Findings"
+        }
+      ],
+      "metadata": {
+        "authors": [
+          "Demo Author A"
+        ]
+      },
+      "synthetic": true,
+      "notice": "Synthetic Demo Data \u2014 Not Research Findings"
+    },
+    {
+      "id": "demo:paper:4",
+      "type": "paper",
+      "label": "Illustrative topic modelling study",
+      "year": 2020,
+      "abstract": "A synthetic paper record created exclusively to demonstrate dashboard interactions.",
+      "keywords": [],
+      "provenance": [
+        {
+          "source": "Hand-authored UI fixture",
+          "synthetic": true,
+          "notice": "Synthetic Demo Data \u2014 Not Research Findings"
+        }
+      ],
+      "metadata": {
+        "authors": [
+          "Demo Author B"
+        ]
+      },
+      "synthetic": true,
+      "notice": "Synthetic Demo Data \u2014 Not Research Findings"
+    },
+    {
+      "id": "demo:paper:5",
+      "type": "paper",
+      "label": "Illustrative evidence review study",
+      "year": 2021,
+      "abstract": "A synthetic paper record created exclusively to demonstrate dashboard interactions.",
+      "keywords": [],
+      "provenance": [
+        {
+          "source": "Hand-authored UI fixture",
+          "synthetic": true,
+          "notice": "Synthetic Demo Data \u2014 Not Research Findings"
+        }
+      ],
+      "metadata": {
+        "authors": [
+          "Demo Author A"
+        ]
+      },
+      "synthetic": true,
+      "notice": "Synthetic Demo Data \u2014 Not Research Findings"
+    },
+    {
+      "id": "demo:paper:6",
+      "type": "paper",
+      "label": "Illustrative temporal analysis study",
+      "year": 2022,
+      "abstract": "A synthetic paper record created exclusively to demonstrate dashboard interactions.",
+      "keywords": [],
+      "provenance": [
+        {
+          "source": "Hand-authored UI fixture",
+          "synthetic": true,
+          "notice": "Synthetic Demo Data \u2014 Not Research Findings"
+        }
+      ],
+      "metadata": {
+        "authors": [
+          "Demo Author B"
+        ]
+      },
+      "synthetic": true,
+      "notice": "Synthetic Demo Data \u2014 Not Research Findings"
+    },
+    {
+      "id": "demo:topic:1",
+      "type": "topic",
+      "label": "Graph representations",
+      "year": null,
+      "abstract": null,
+      "keywords": [
+        "graph",
+        "representations"
+      ],
+      "provenance": [
+        {
+          "source": "Hand-authored UI fixture",
+          "synthetic": true,
+          "notice": "Synthetic Demo Data \u2014 Not Research Findings"
+        }
+      ],
+      "metadata": {},
+      "synthetic": true,
+      "notice": "Synthetic Demo Data \u2014 Not Research Findings"
+    },
+    {
+      "id": "demo:topic:2",
+      "type": "topic",
+      "label": "Citation context analysis",
+      "year": null,
+      "abstract": null,
+      "keywords": [
+        "citation",
+        "context",
+        "analysis"
+      ],
+      "provenance": [
+        {
+          "source": "Hand-authored UI fixture",
+          "synthetic": true,
+          "notice": "Synthetic Demo Data \u2014 Not Research Findings"
+        }
+      ],
+      "metadata": {},
+      "synthetic": true,
+      "notice": "Synthetic Demo Data \u2014 Not Research Findings"
+    },
+    {
+      "id": "demo:topic:3",
+      "type": "topic",
+      "label": "Scientific topic models",
+      "year": null,
+      "abstract": null,
+      "keywords": [
+        "scientific",
+        "topic",
+        "models"
+      ],
+      "provenance": [
+        {
+          "source": "Hand-authored UI fixture",
+          "synthetic": true,
+          "notice": "Synthetic Demo Data \u2014 Not Research Findings"
+        }
+      ],
+      "metadata": {},
+      "synthetic": true,
+      "notice": "Synthetic Demo Data \u2014 Not Research Findings"
+    },
+    {
+      "id": "demo:author:1",
+      "type": "author",
+      "label": "Demo Author A",
+      "year": null,
+      "abstract": null,
+      "keywords": [],
+      "provenance": [
+        {
+          "source": "Hand-authored UI fixture",
+          "synthetic": true,
+          "notice": "Synthetic Demo Data \u2014 Not Research Findings"
+        }
+      ],
+      "metadata": {},
+      "synthetic": true,
+      "notice": "Synthetic Demo Data \u2014 Not Research Findings"
+    },
+    {
+      "id": "demo:author:2",
+      "type": "author",
+      "label": "Demo Author B",
+      "year": null,
+      "abstract": null,
+      "keywords": [],
+      "provenance": [
+        {
+          "source": "Hand-authored UI fixture",
+          "synthetic": true,
+          "notice": "Synthetic Demo Data \u2014 Not Research Findings"
+        }
+      ],
+      "metadata": {},
+      "synthetic": true,
+      "notice": "Synthetic Demo Data \u2014 Not Research Findings"
+    }
+  ],
+  "edges": [
+    {
+      "id": "demo:edge:1",
+      "source": "demo:paper:1",
+      "target": "demo:author:2",
+      "relation": "authored_by",
+      "provenance": [
+        {
+          "source": "Hand-authored UI fixture",
+          "synthetic": true,
+          "notice": "Synthetic Demo Data \u2014 Not Research Findings"
+        }
+      ],
+      "synthetic": true,
+      "notice": "Synthetic Demo Data \u2014 Not Research Findings"
+    },
+    {
+      "id": "demo:edge:2",
+      "source": "demo:paper:1",
+      "target": "demo:topic:1",
+      "relation": "associated_with_topic",
+      "provenance": [
+        {
+          "source": "Hand-authored UI fixture",
+          "synthetic": true,
+          "notice": "Synthetic Demo Data \u2014 Not Research Findings"
+        }
+      ],
+      "synthetic": true,
+      "notice": "Synthetic Demo Data \u2014 Not Research Findings"
+    },
+    {
+      "id": "demo:edge:3",
+      "source": "demo:paper:2",
+      "target": "demo:author:1",
+      "relation": "authored_by",
+      "provenance": [
+        {
+          "source": "Hand-authored UI fixture",
+          "synthetic": true,
+          "notice": "Synthetic Demo Data \u2014 Not Research Findings"
+        }
+      ],
+      "synthetic": true,
+      "notice": "Synthetic Demo Data \u2014 Not Research Findings"
+    },
+    {
+      "id": "demo:edge:4",
+      "source": "demo:paper:2",
+      "target": "demo:topic:1",
+      "relation": "associated_with_topic",
+      "provenance": [
+        {
+          "source": "Hand-authored UI fixture",
+          "synthetic": true,
+          "notice": "Synthetic Demo Data \u2014 Not Research Findings"
+        }
+      ],
+      "synthetic": true,
+      "notice": "Synthetic Demo Data \u2014 Not Research Findings"
+    },
+    {
+      "id": "demo:edge:5",
+      "source": "demo:paper:3",
+      "target": "demo:author:2",
+      "relation": "authored_by",
+      "provenance": [
+        {
+          "source": "Hand-authored UI fixture",
+          "synthetic": true,
+          "notice": "Synthetic Demo Data \u2014 Not Research Findings"
+        }
+      ],
+      "synthetic": true,
+      "notice": "Synthetic Demo Data \u2014 Not Research Findings"
+    },
+    {
+      "id": "demo:edge:6",
+      "source": "demo:paper:3",
+      "target": "demo:topic:2",
+      "relation": "associated_with_topic",
+      "provenance": [
+        {
+          "source": "Hand-authored UI fixture",
+          "synthetic": true,
+          "notice": "Synthetic Demo Data \u2014 Not Research Findings"
+        }
+      ],
+      "synthetic": true,
+      "notice": "Synthetic Demo Data \u2014 Not Research Findings"
+    },
+    {
+      "id": "demo:edge:7",
+      "source": "demo:paper:4",
+      "target": "demo:author:1",
+      "relation": "authored_by",
+      "provenance": [
+        {
+          "source": "Hand-authored UI fixture",
+          "synthetic": true,
+          "notice": "Synthetic Demo Data \u2014 Not Research Findings"
+        }
+      ],
+      "synthetic": true,
+      "notice": "Synthetic Demo Data \u2014 Not Research Findings"
+    },
+    {
+      "id": "demo:edge:8",
+      "source": "demo:paper:4",
+      "target": "demo:topic:2",
+      "relation": "associated_with_topic",
+      "provenance": [
+        {
+          "source": "Hand-authored UI fixture",
+          "synthetic": true,
+          "notice": "Synthetic Demo Data \u2014 Not Research Findings"
+        }
+      ],
+      "synthetic": true,
+      "notice": "Synthetic Demo Data \u2014 Not Research Findings"
+    },
+    {
+      "id": "demo:edge:9",
+      "source": "demo:paper:5",
+      "target": "demo:author:2",
+      "relation": "authored_by",
+      "provenance": [
+        {
+          "source": "Hand-authored UI fixture",
+          "synthetic": true,
+          "notice": "Synthetic Demo Data \u2014 Not Research Findings"
+        }
+      ],
+      "synthetic": true,
+      "notice": "Synthetic Demo Data \u2014 Not Research Findings"
+    },
+    {
+      "id": "demo:edge:10",
+      "source": "demo:paper:5",
+      "target": "demo:topic:3",
+      "relation": "associated_with_topic",
+      "provenance": [
+        {
+          "source": "Hand-authored UI fixture",
+          "synthetic": true,
+          "notice": "Synthetic Demo Data \u2014 Not Research Findings"
+        }
+      ],
+      "synthetic": true,
+      "notice": "Synthetic Demo Data \u2014 Not Research Findings"
+    },
+    {
+      "id": "demo:edge:11",
+      "source": "demo:paper:6",
+      "target": "demo:author:1",
+      "relation": "authored_by",
+      "provenance": [
+        {
+          "source": "Hand-authored UI fixture",
+          "synthetic": true,
+          "notice": "Synthetic Demo Data \u2014 Not Research Findings"
+        }
+      ],
+      "synthetic": true,
+      "notice": "Synthetic Demo Data \u2014 Not Research Findings"
+    },
+    {
+      "id": "demo:edge:12",
+      "source": "demo:paper:6",
+      "target": "demo:topic:3",
+      "relation": "associated_with_topic",
+      "provenance": [
+        {
+          "source": "Hand-authored UI fixture",
+          "synthetic": true,
+          "notice": "Synthetic Demo Data \u2014 Not Research Findings"
+        }
+      ],
+      "synthetic": true,
+      "notice": "Synthetic Demo Data \u2014 Not Research Findings"
+    }
+  ],
+  "intents": [
+    {
+      "id": "demo:context:1",
+      "text": "Prior illustrative work describes the research context.",
+      "label": "background",
+      "confidence": null,
+      "source": "Synthetic UI fixture",
+      "split": null,
+      "citing_paper_id": null,
+      "cited_paper_id": null,
+      "model_id": "No model",
+      "model_version": "synthetic-ui-v1",
+      "provenance": [
+        {
+          "source": "Hand-authored UI fixture",
+          "synthetic": true,
+          "notice": "Synthetic Demo Data \u2014 Not Research Findings"
+        }
+      ],
+      "synthetic": true,
+      "original_label": null,
+      "notice": "Synthetic Demo Data \u2014 Not Research Findings"
+    },
+    {
+      "id": "demo:context:2",
+      "text": "This synthetic example uses an illustrative procedure.",
+      "label": "method",
+      "confidence": null,
+      "source": "Synthetic UI fixture",
+      "split": null,
+      "citing_paper_id": null,
+      "cited_paper_id": null,
+      "model_id": "No model",
+      "model_version": "synthetic-ui-v1",
+      "provenance": [
+        {
+          "source": "Hand-authored UI fixture",
+          "synthetic": true,
+          "notice": "Synthetic Demo Data \u2014 Not Research Findings"
+        }
+      ],
+      "synthetic": true,
+      "original_label": null,
+      "notice": "Synthetic Demo Data \u2014 Not Research Findings"
+    },
+    {
+      "id": "demo:context:3",
+      "text": "An illustrative comparison is shown for the interface only.",
+      "label": "result",
+      "confidence": null,
+      "source": "Synthetic UI fixture",
+      "split": null,
+      "citing_paper_id": null,
+      "cited_paper_id": null,
+      "model_id": "No model",
+      "model_version": "synthetic-ui-v1",
+      "provenance": [
+        {
+          "source": "Hand-authored UI fixture",
+          "synthetic": true,
+          "notice": "Synthetic Demo Data \u2014 Not Research Findings"
+        }
+      ],
+      "synthetic": true,
+      "original_label": null,
+      "notice": "Synthetic Demo Data \u2014 Not Research Findings"
+    }
+  ]
+}

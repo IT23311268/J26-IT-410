@@ -63,24 +63,57 @@ The primary implementation uses Hugging Face `AutoTokenizer` and
 `AutoModelForSequenceClassification` with
 `allenai/scibert_scivocab_uncased`, pinned to revision
 `952d056ace307abd2cda7cee822a1d608deb20ed`. It fixes three output logits and
-implements dynamic padding, attention masks, AdamW, warmup scheduling, gradient
+implements dynamic padding, attention masks, AdamW or Adafactor, warmup scheduling, gradient
 clipping, accumulation, early stopping on dev macro F1, deterministic ordering,
 safe `safetensors` checkpoints, and CPU/CUDA selection. Imports never download
 weights.
 
-Default full settings are 256 tokens, learning rate `2e-5`, four epochs, train
-batch 16, evaluation batch 32, weight decay 0.01, warmup ratio 0.1, and seed 42.
+Full settings are 256 tokens, learning rate `2e-5`, up to four epochs, effective
+train batch 16, weight decay 0.01, warmup ratio 0.1, and seed 42.
 Class weighting supports `none`, `inverse`, and `smoothed`; weighted sampling is
 optional and cannot be combined with class weighting. Quick mode uses a fixed,
 label-balanced training subset and is for pipeline debugging only. Multiple seeds
 publish separate runs and summarize dev macro-F1 variation without reusing test
 results for selection.
 
-The local verification environment has `torch 2.6.0+cpu`; preflight measured
-about 0.53 GiB available system RAM, below the configured 3 GiB full-training
-floor. No pretrained SciBERT weights were downloaded and no SciBERT fine-tuning
-run is claimed. Install a CUDA-enabled PyTorch build or provide sufficient CPU
-memory before requesting full training.
+The local environment has `torch 2.6.0+cpu` and no CUDA device. The repository
+configuration selects a lower-memory CPU profile: Adafactor with fixed learning
+rate, gradient checkpointing, one-record microbatches, 16 accumulation steps,
+one-record evaluation batches, and two CPU threads. All encoder and classifier
+parameters remain trainable in FP32. This changes the optimizer from the library's
+AdamW default; compare results using the recorded optimizer and configuration.
+`--low-memory` explicitly selects the same profile with a custom configuration.
+
+The pinned pretrained checkpoint is cached under
+`data/interim/citation_intent_models/`; cached training can use `--offline`.
+The repository profile checks at least 0.25 GiB immediately available RAM and,
+on Windows, 3 GiB of available committed-memory capacity. These startup checks
+are heuristics; the measured quick run used about 1.7 GB peak physical RAM and
+1.93 GB process-private committed memory. No operating-system page-file settings
+are changed. Library defaults retain the original 3 GiB physical-memory floor.
+Blocked runs preserve `resource_preflight.json` with the measured values.
+
+During training, `training_progress.json` and structured log messages record
+actual examples, optimizer steps, epoch timing, and optimizer-state bytes.
+The full corpus contains 8,222 admitted training contexts. Quick mode uses 768
+real contexts, balanced across the three labels, and validates on all 915 dev
+contexts. It is a pipeline check rather than a full-data performance result.
+
+Actual quick run on 2026-10-21:
+`run-2026-10-21T17-52-54.140709+00-00-d34d16eb`. One epoch and 48 optimizer
+updates completed in about 10.6 minutes including audits, validation and artifact
+publication. Dev macro F1 was **0.757874**, dev accuracy **0.784699**. The test
+split was not evaluated. The measured Adafactor state was 1,297,676 bytes.
+The saved model and tokenizer are under that published run directory; execution
+logs and status are in `artifacts/reports/stage04/scibert-real-quick-20261021/`.
+
+The full-data command was launched at 2026-10-21 18:05 UTC and verified through
+actual optimizer updates on all 8,222 train contexts. It is still running at this
+documentation update, with an initial CPU estimate of 5–6 hours for four epochs.
+Read `artifacts/reports/stage04/scibert-real-full-20261021/status.json` and
+`training.log` for live progress and eventual completion or failure; no completed
+full-data metric is claimed yet. The durable logging wrapper is
+`scripts/run_scibert_training.py`.
 
 ## Baselines and executed results
 
@@ -114,7 +147,7 @@ ci-hgnn-rgd citation-intent inspect-data
 ci-hgnn-rgd citation-intent audit-leakage
 ci-hgnn-rgd citation-intent train-baselines
 ci-hgnn-rgd citation-intent train --model scibert --mode quick --offline
-ci-hgnn-rgd citation-intent train --model scibert --mode full --device cuda
+ci-hgnn-rgd citation-intent train --model scibert --mode full --offline
 ci-hgnn-rgd citation-intent evaluate --run-id RUN_ID --split dev
 ci-hgnn-rgd citation-intent evaluate --run-id RUN_ID --split test
 ci-hgnn-rgd citation-intent calibrate --run-id RUN_ID
@@ -125,7 +158,7 @@ ci-hgnn-rgd citation-intent report --run-id RUN_ID
 ```
 
 `--config`, `--project-root`, `--offline`, `--device`, `--batch-size`, `--seed`,
-`--output-dir`, `--resume`, and `--max-records` apply where meaningful. Paths
+`--output-dir`, `--resume`, `--low-memory`, and `--max-records` apply where meaningful. Paths
 stay inside the component root; existing model runs and exports are not silently
 overwritten, and failed training keeps a recoverable pending directory.
 
@@ -162,3 +195,43 @@ The generated report bundle under `artifacts/reports/stage04/RUN_ID/` includes t
 data profile, leakage/temporal audit, baseline comparison, per-class metrics,
 context-reference error analysis, confusion-matrix PNGs, evaluation summary, model
 comparison, and readiness note. Generated artifacts are ignored by Git.
+
+## Remaining-work audit, 2026-10-21
+
+See [the completion audit](stage04_completion_audit.md) for the inspected gaps,
+changes, actual verification results, and experiments that remain unexecuted.
+This follow-up keeps the existing Stage 01–03 contracts and later-stage stubs.
+
+File inference now streams JSONL and Parquet through bounded CPU/model batches.
+JSONL and Parquet publication is atomic, including when inference fails midway.
+Parquet readers restore serialized provenance and the original string/integer
+source-ID type. Empty exports retain their contract schema. Each output includes
+an input context reference; text excerpts require `include_text_excerpt: true`.
+Prediction commands report truncated and skipped-empty context counts.
+
+Training now normalizes accumulated gradients by the actual effective batch
+denominator, including partial batches and weighted loss. Device-based batch
+adjustment preserves the configured effective batch size and records the actual
+microbatch and accumulation settings. `auto_adjust_batch_size: false` retains
+explicit settings; the library CPU microbatch cap is two and the local YAML cap
+is one. Memory estimates are
+conservative heuristics rather than guarantees. Quick mode caps training at
+`quick_epochs: 1` by default; `--max-records` requires quick mode.
+
+Training/dev truncation counts and completed-epoch histories are persisted.
+Early stopping counts consecutive non-improving validation epochs. A model-only
+resume additionally verifies the exact training-record selection and ordering;
+optimizer/scheduler/scaler state is not restored. Reports include actual per-split
+metrics JSON and calibration JSON when their source artifacts exist, and runs
+include a standalone environment snapshot.
+
+Leakage JSON includes all affected source-ID, exact/normalized-text records and
+all detected near-duplicate pairs. Near-duplicate discovery remains bounded and
+nonexhaustive. Chronological allocation rechecks historical availability and
+future-derived metadata against each allocation cutoff; an old eligibility flag
+alone cannot authorize earlier features. The current SciCite view still has no
+verified temporal coverage.
+
+The 35 quarantined records mean this is a filtered view of the official splits.
+Compare measured scores only against runs using the same admitted records;
+do not equate them with results on all 11,020 source rows.

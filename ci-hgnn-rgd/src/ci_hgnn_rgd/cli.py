@@ -38,10 +38,14 @@ def main(argv: list[str] | None = None) -> int:
         "show-pipeline", help="show the proposed twelve-stage workflow and implementation status"
     )
     from .data.cli import register_parser
+    from .graph.cli import register_parser as register_graph_parser
     from .nlp.intent_cli import register_parser as register_intent_parser
+    from .nlp.topics.cli import register_parser as register_topic_parser
 
     register_parser(commands)
     register_intent_parser(commands)
+    register_topic_parser(commands)
+    register_graph_parser(commands)
     args = parser.parse_args(argv)
     logger = configure_logging()
     try:
@@ -54,6 +58,18 @@ def main(argv: list[str] | None = None) -> int:
             return 0
         if args.command == "citation-intent":
             from .nlp.intent_cli import run_command
+
+            report, code = run_command(args)
+            print(canonical_json(report))
+            return code
+        if args.command == "topics":
+            from .nlp.topics.cli import run_command
+
+            report, code = run_command(args)
+            print(canonical_json(report))
+            return code
+        if args.command == "graph":
+            from .graph.cli import run_command
 
             report, code = run_command(args)
             print(canonical_json(report))

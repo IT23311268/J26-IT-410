@@ -15,7 +15,7 @@ from typing import Literal
 from ..data.integration_manifest import resolve_run
 from ..data.provenance import file_sha256
 from ..data.split_management import SplitAuditor, normalized_context
-from ..data.temporal_integrity import parse_cutoff
+from ..data.temporal_integrity import assess_temporal, parse_cutoff
 from ..pipeline import fingerprint
 from .intent_config import Stage04Config
 from .intent_contracts import (
@@ -84,6 +84,21 @@ def _verify_table(run_dir: Path, manifest: dict, table: str) -> Path:
 
 
 def _record_from_stage03(row: dict) -> IntentDatasetRecord:
+    if not isinstance(row, dict):
+        raise IntentDataError("citation-context row must be an object")
+    for field in ("provenance", "transformations"):
+        values = row.get(field)
+        if values is not None and (
+            not isinstance(values, list) or any(not isinstance(item, dict) for item in values)
+        ):
+            raise IntentDataError(f"{field} must be a list of objects")
+    if row.get("temporal_eligibility") is not None and not isinstance(
+        row["temporal_eligibility"], dict
+    ):
+        raise IntentDataError("temporal_eligibility must be an object")
+    temporal = row.get("temporal_eligibility") or {}
+    if not isinstance(temporal.get("evidence", {}), dict):
+        raise IntentDataError("temporal evidence must be an object")
     context_id = row.get("context_id")
     if not isinstance(context_id, str) or not context_id.strip():
         raise IntentDataError("missing citation_context_id")
@@ -116,7 +131,7 @@ def _record_from_stage03(row: dict) -> IntentDatasetRecord:
                 "reason": "Stage 03 normalized context differed from deterministic Stage 04 view",
             }
         )
-    provenance = tuple(item for item in row.get("provenance", []) if isinstance(item, dict))
+    provenance = tuple(row.get("provenance") or [])
     identity = row.get("identity_resolution_status")
     return IntentDatasetRecord(
         citation_context_id=context_id,
@@ -193,6 +208,38 @@ def audit_intent_leakage(
                 }
             )
         report = auditor.report()
+        findings = {}
+        for name, column in (
+            ("source_record_id", "record_hash"),
+            ("exact_text", "raw_hash"),
+            ("normalized_text", "norm_hash"),
+        ):
+            # Only constant column names above enter this SQL. Include every
+            # affected context, rather than relying on a truncated examples list.
+            findings[name] = [
+                {"citation_context_id": context_id, "source_split": split, "group_sha256": key}
+                for context_id, split, key in auditor.db.execute(
+                    f"SELECT context_id,split,{column} FROM split_contexts "
+                    f"WHERE {column} IN (SELECT {column} FROM split_contexts "
+                    f"WHERE {column} IS NOT NULL AND split IS NOT NULL "
+                    f"GROUP BY {column} HAVING COUNT(DISTINCT split)>1) ORDER BY seq"
+                )
+            ]
+        findings["near_duplicate_pairs"] = [
+            {
+                "left_context_id": left,
+                "right_context_id": right,
+                "left_split": ls,
+                "right_split": rs,
+                "similarity": similarity,
+            }
+            for left, right, ls, rs, similarity in auditor.db.execute(
+                "SELECT l.context_id,r.context_id,l.split,r.split,n.similarity "
+                "FROM split_near n JOIN split_contexts l ON l.seq=n.left_seq "
+                "JOIN split_contexts r ON r.seq=n.right_seq ORDER BY n.left_seq,n.right_seq"
+            )
+        ]
+        report["affected_records"] = findings
     report["scope"] = "nonquarantined Stage 03 SciCite contexts admitted to the Stage 04 model view"
     report["benchmark_policy"] = (
         "Official SciCite train/dev/test assignments are retained. Findings are reported, not "
@@ -250,6 +297,7 @@ def chronological_split_if_supported(
         raise IntentDataError("chronological boundaries must satisfy train < dev < test")
     allocated: dict[str, list[IntentDatasetRecord]] = {"train": [], "dev": [], "test": []}
     unknown = []
+    after_window = []
     for record in records:
         temporal = record.temporal_eligibility
         evidence = temporal.get("evidence", {})
@@ -258,12 +306,23 @@ def chronological_split_if_supported(
             unknown.append(record.citation_context_id)
             continue
         moment = parse_cutoff(value)
-        if moment < train_boundary:
-            allocated["train"].append(record)
-        elif moment < dev_boundary:
-            allocated["dev"].append(record)
-        elif moment < test_boundary:
-            allocated["test"].append(record)
+        name, boundary = (
+            ("train", train_boundary)
+            if moment < train_boundary
+            else ("dev", dev_boundary)
+            if moment < dev_boundary
+            else ("test", test_boundary)
+        )
+        if moment >= test_boundary:
+            after_window.append(record.citation_context_id)
+            continue
+        # An eligibility flag computed against a later Stage 03 cutoff cannot
+        # authorize future metadata in an earlier evaluation window.
+        assessment = assess_temporal(evidence, boundary, kind="citation_context")
+        if not assessment["strict_historical_claim"]:
+            unknown.append(record.citation_context_id)
+            continue
+        allocated[name].append(record)
     if unknown or not all(allocated.values()):
         raise IntentDataError(
             "chronological evaluation is not supported by complete verified temporal metadata"
@@ -272,6 +331,12 @@ def chronological_split_if_supported(
         "split_construction": "verified_publication_date_and_stage03_temporal_eligibility",
         "records": {name: tuple(values) for name, values in allocated.items()},
         "official_splits_replaced": False,
+        "excluded_after_test_window": after_window,
+        "boundaries": {
+            "train_end": train_boundary.isoformat(),
+            "dev_end": dev_boundary.isoformat(),
+            "test_end": test_boundary.isoformat(),
+        },
     }
 
 

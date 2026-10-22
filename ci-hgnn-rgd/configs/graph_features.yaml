@@ -1,0 +1,6 @@
+features:
+  paper_embedding: specter2
+  missing_embedding_strategy: masked_zero
+  include_publication_year: true
+  # Limit tensor payload independently from the SQLite cache and Python overhead.
+  max_tensor_bytes: 268435456

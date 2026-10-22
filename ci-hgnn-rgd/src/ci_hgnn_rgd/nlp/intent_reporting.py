@@ -382,6 +382,39 @@ def generate_run_reports(
     base = write_data_reports(prepared, output_dir)
     evaluations = _evaluation_documents(run_dir)
     generated: dict[str, Any] = {**base, "report_dir": str(output_dir)}
+    for split, filename in (("dev", "validation_metrics.json"), ("test", "test_metrics.json")):
+        documents = [item for item in evaluations if item.get("split") == split]
+        if documents:
+            target = output_dir / filename
+            atomic_json(
+                target,
+                {
+                    "split": split,
+                    "models": {
+                        item["model"]: {
+                            "metrics": item["metrics"],
+                            "evaluated_at": item.get("evaluated_at"),
+                            "probability_status": item.get("prediction_probability_status"),
+                            "dataset_fingerprint": item.get("dataset_fingerprint"),
+                        }
+                        for item in documents
+                    },
+                },
+            )
+            generated[filename.removesuffix(".json")] = str(target)
+        elif split == "dev":
+            validation = _read_json(run_dir / "validation_metrics.json")
+            if validation is not None:
+                target = output_dir / filename
+                atomic_json(
+                    target, {"split": "dev", "source": "training_selection", "metrics": validation}
+                )
+                generated["validation_metrics"] = str(target)
+    calibration = _read_json(run_dir / "calibration.json")
+    if calibration is not None:
+        target = output_dir / "calibration_report.json"
+        atomic_json(target, calibration)
+        generated["calibration_report"] = str(target)
     baseline = _read_json(run_dir / "baseline_results.json")
     if baseline is not None:
         rows = []
@@ -454,7 +487,7 @@ def generate_run_reports(
             )
         )
     errors = _error_rows(evaluations)
-    if errors:
+    if evaluations:
         generated["error_analysis"] = str(
             _write_csv(
                 output_dir / "error_analysis.csv",

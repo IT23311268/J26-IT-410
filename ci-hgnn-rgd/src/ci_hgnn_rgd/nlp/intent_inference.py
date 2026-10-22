@@ -4,8 +4,9 @@ from __future__ import annotations
 
 import json
 import os
-from collections.abc import Sequence
+from collections.abc import Iterable, Iterator, Sequence
 from datetime import UTC, datetime
+from itertools import islice
 from pathlib import Path
 from tempfile import NamedTemporaryFile
 from typing import Any
@@ -113,10 +114,17 @@ def predict_contexts(
     *,
     batch_size: int,
     low_confidence_threshold: float,
+    input_offset: int = 0,
+    include_text_excerpt: bool = False,
+    text_excerpt_characters: int = 240,
 ) -> tuple[CitationIntentEvidence, ...]:
     """Predict nonempty contexts in batches and retain the caller's input order."""
     if not 0 <= low_confidence_threshold <= 1:
         raise InferenceInputError("low-confidence threshold must be between zero and one")
+    if batch_size < 1 or input_offset < 0 or text_excerpt_characters < 1:
+        raise InferenceInputError(
+            "batch size and excerpt limit must be positive; offset nonnegative"
+        )
     nonempty: list[tuple[int, str]] = []
     texts: list[str] = []
     for index, row in enumerate(inputs):
@@ -128,9 +136,13 @@ def predict_contexts(
     # batching keyword.  Transformer inference does, so keep the public evidence
     # function backend-neutral without swallowing arbitrary TypeErrors.
     model_output = (
-        predictor.predict(texts)
-        if isinstance(predictor, BaselinePredictor)
-        else predictor.predict(texts, batch_size=batch_size)
+        (
+            predictor.predict(texts)
+            if isinstance(predictor, BaselinePredictor)
+            else predictor.predict(texts, batch_size=batch_size)
+        )
+        if texts
+        else {"probabilities": [], "truncated": []}
     )
     probabilities = model_output.get("probabilities")
     if probabilities is None:
@@ -150,11 +162,13 @@ def predict_contexts(
     timestamp = datetime.now(UTC)
     outputs = []
     for index, row in enumerate(inputs):
-        context_id = _context_id(row, index)
+        context_id = _context_id(row, input_offset + index)
         source_dataset = _value(row, "source_dataset", "manual-input")
         provenance = _value(row, "provenance", ())
-        if not isinstance(provenance, (list, tuple)):
-            provenance = ()
+        if not isinstance(provenance, (list, tuple)) or any(
+            not isinstance(item, dict) for item in provenance
+        ):
+            raise InferenceInputError("provenance must be a list of objects")
         if index not in result_by_index:
             outputs.append(
                 CitationIntentEvidence(
@@ -171,12 +185,13 @@ def predict_contexts(
                     tokenizer_id=model_info.get("tokenizer_id"),
                     tokenizer_revision=model_info.get("tokenizer_revision"),
                     dataset_version=_value(row, "dataset_version"),
-                    provenance=tuple(item for item in provenance if isinstance(item, dict)),
+                    provenance=tuple(provenance),
                     identity_resolution_status=_value(
                         row, "identity_resolution_status", "UNRESOLVED"
                     ),
                     prediction_timestamp=timestamp,
-                    input_order=index,
+                    input_order=input_offset + index,
+                    text_reference=context_id,
                     prediction_status="skipped_empty_text",
                 )
             )
@@ -206,17 +221,48 @@ def predict_contexts(
                 tokenizer_id=model_info.get("tokenizer_id"),
                 tokenizer_revision=model_info.get("tokenizer_revision"),
                 dataset_version=_value(row, "dataset_version"),
-                provenance=tuple(item for item in provenance if isinstance(item, dict)),
+                provenance=tuple(provenance),
                 identity_resolution_status=_value(row, "identity_resolution_status", "UNRESOLVED"),
                 prediction_timestamp=timestamp,
-                input_order=index,
+                input_order=input_offset + index,
                 truncation_applied=truncated,
+                text_reference=context_id,
+                text_excerpt=_text(row)[:text_excerpt_characters] if include_text_excerpt else None,
             )
         )
     return tuple(outputs)
 
 
-def _atomic_jsonl(path: Path, rows: Sequence[dict]) -> None:
+def iter_context_predictions(
+    inputs: Iterable[IntentDatasetRecord | dict],
+    predictor,
+    model_info: dict,
+    *,
+    batch_size: int,
+    low_confidence_threshold: float,
+    include_text_excerpt: bool = False,
+    text_excerpt_characters: int = 240,
+) -> Iterator[CitationIntentEvidence]:
+    """Keep at most one input batch in memory, including for CPU baselines."""
+    if batch_size < 1:
+        raise InferenceInputError("inference batch size must be positive")
+    iterator = iter(inputs)
+    offset = 0
+    while batch := list(islice(iterator, batch_size)):
+        yield from predict_contexts(
+            batch,
+            predictor,
+            model_info,
+            batch_size=batch_size,
+            low_confidence_threshold=low_confidence_threshold,
+            input_offset=offset,
+            include_text_excerpt=include_text_excerpt,
+            text_excerpt_characters=text_excerpt_characters,
+        )
+        offset += len(batch)
+
+
+def _atomic_jsonl(path: Path, rows: Iterable[dict]) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     temporary = None
     try:
@@ -232,10 +278,16 @@ def _atomic_jsonl(path: Path, rows: Sequence[dict]) -> None:
             temporary.unlink()
 
 
-def write_prediction_export(path: Path, predictions: Sequence[CitationIntentEvidence]) -> Path:
+def write_prediction_export(
+    path: Path, predictions: Iterable[CitationIntentEvidence], *, batch_size: int = 512
+) -> Path:
     """Write JSONL or Parquet predictions without serializing executable objects."""
     path = Path(path)
-    rows = [prediction.model_dump(mode="json") for prediction in predictions]
+    if path.exists():
+        raise InferenceInputError("prediction output already exists; exports are never overwritten")
+    if batch_size < 1:
+        raise InferenceInputError("export batch size must be positive")
+    rows = (prediction.model_dump(mode="json") for prediction in predictions)
     if path.suffix.lower() == ".jsonl":
         _atomic_jsonl(path, rows)
         return path
@@ -248,21 +300,73 @@ def write_prediction_export(path: Path, predictions: Sequence[CitationIntentEvid
         raise InferenceInputError(
             "Parquet prediction exports require the optional parquet extra"
         ) from error
-    flattened = []
-    for row in rows:
-        flattened.append({**row, "provenance": canonical_json(row["provenance"])})
     path.parent.mkdir(parents=True, exist_ok=True)
-    temporary = path.with_name(".tmp-" + path.name)
-    pq.write_table(pa.Table.from_pylist(flattened), temporary, compression="zstd")
-    os.replace(temporary, path)
+    # Declare the complete schema before the first batch: nullable endpoints or
+    # an empty first batch must not lock later batches into Arrow's null type.
+    floats = {"prob_background", "prob_method", "prob_result", "confidence", "predictive_entropy"}
+    booleans = {"low_confidence_review", "truncation_applied"}
+    schema = pa.schema(
+        [
+            (
+                name,
+                pa.float64()
+                if name in floats
+                else pa.bool_()
+                if name in booleans
+                else pa.int64()
+                if name == "input_order"
+                else pa.string(),
+            )
+            for name in CitationIntentEvidence.model_fields
+        ]
+        + [("source_record_id_json", pa.string())]
+    )
+    temporary = None
+    try:
+        with NamedTemporaryFile(dir=path.parent, suffix=".parquet", delete=False) as stream:
+            temporary = Path(stream.name)
+        with pq.ParquetWriter(temporary, schema=schema, compression="zstd") as writer:
+            while batch := list(islice(rows, batch_size)):
+                for row in batch:
+                    row["provenance"] = canonical_json(row["provenance"])
+                    row["source_record_id_json"] = canonical_json(row["source_record_id"])
+                    if row["source_record_id"] is not None:
+                        row["source_record_id"] = str(row["source_record_id"])
+                writer.write_table(pa.Table.from_pylist(batch, schema=schema))
+        os.replace(temporary, path)
+    finally:
+        if temporary is not None and temporary.exists():
+            temporary.unlink()
     return path
 
 
-def read_prediction_inputs(path: Path) -> list[dict]:
+def _restore_input_provenance(row: dict) -> dict:
+    if row.get("source_record_id_json") is not None:
+        try:
+            row = {**row, "source_record_id": json.loads(row["source_record_id_json"])}
+            row.pop("source_record_id_json")
+        except (TypeError, json.JSONDecodeError) as error:
+            raise InferenceInputError("invalid serialized source record identifier") from error
+    provenance = row.get("provenance")
+    if isinstance(provenance, str):
+        try:
+            provenance = json.loads(provenance)
+        except json.JSONDecodeError as error:
+            raise InferenceInputError("invalid serialized provenance") from error
+        if not isinstance(provenance, list) or any(
+            not isinstance(item, dict) for item in provenance
+        ):
+            raise InferenceInputError("serialized provenance must be a list of objects")
+        row = {**row, "provenance": provenance}
+    return row
+
+
+def iter_prediction_inputs(path: Path, *, batch_size: int = 512) -> Iterator[dict]:
     """Read JSONL or Parquet inference rows without loading model artifacts."""
     path = Path(path)
+    if batch_size < 1:
+        raise InferenceInputError("input batch size must be positive")
     if path.suffix.lower() == ".jsonl":
-        rows = []
         with path.open(encoding="utf-8") as stream:
             for number, line in enumerate(stream, start=1):
                 if not line.strip():
@@ -273,8 +377,8 @@ def read_prediction_inputs(path: Path) -> list[dict]:
                     raise InferenceInputError(f"invalid JSONL at line {number}") from error
                 if not isinstance(row, dict):
                     raise InferenceInputError(f"JSONL row {number} is not an object")
-                rows.append(row)
-        return rows
+                yield _restore_input_provenance(row)
+        return
     if path.suffix.lower() == ".parquet":
         try:
             import pyarrow.parquet as pq
@@ -282,5 +386,13 @@ def read_prediction_inputs(path: Path) -> list[dict]:
             raise InferenceInputError(
                 "Parquet input requires the optional parquet extra"
             ) from error
-        return pq.read_table(path).to_pylist()
+        for batch in pq.ParquetFile(path).iter_batches(batch_size=batch_size):
+            for row in batch.to_pylist():
+                yield _restore_input_provenance(row)
+        return
     raise InferenceInputError("prediction input must be JSONL or Parquet")
+
+
+def read_prediction_inputs(path: Path) -> list[dict]:
+    """Compatibility materializer; corpus CLI workflows use the streaming iterator."""
+    return list(iter_prediction_inputs(path))

@@ -114,6 +114,8 @@ def calibration_metrics(
     y_true: Sequence[int], probabilities: Sequence[Sequence[float]], *, bins: int = 15
 ) -> dict:
     """NLL, multiclass Brier score and top-label expected calibration error."""
+    if type(bins) is not int or bins < 2:
+        raise IntentDataError("expected calibration error requires at least two bins")
     if not y_true:
         raise IntentDataError("calibration metrics require at least one record")
     _validate_targets(y_true, name="true labels")
@@ -187,12 +189,12 @@ def _bootstrap_units(length: int, groups: Sequence[str | None] | None) -> list[l
         return [[index] for index in range(length)]
     if len(groups) != length:
         raise IntentDataError("bootstrap group count does not match predictions")
-    buckets: dict[str, list[int]] = defaultdict(list)
+    buckets: dict[tuple[str, str], list[int]] = defaultdict(list)
     for index, group in enumerate(groups):
         if group is None:
-            buckets[f"__record__:{index}"].append(index)
+            buckets[("record", str(index))].append(index)
         else:
-            buckets[str(group)].append(index)
+            buckets[("group", str(group))].append(index)
     return [buckets[key] for key in sorted(buckets)]
 
 
@@ -230,7 +232,9 @@ def bootstrap_macro_f1(
         "confidence": confidence,
         "resamples": n_resamples,
         "seed": seed,
-        "resampling_unit": "verified_group" if groups is not None else "record",
+        "resampling_unit": "verified_group"
+        if groups and any(g is not None for g in groups)
+        else "record",
         "assumption": (
             "Bootstrap intervals are sampling estimates. Group clusters are used only when a "
             "verified group identifier was supplied."
@@ -280,6 +284,8 @@ def paired_bootstrap_difference(
         "confidence": confidence,
         "resamples": n_resamples,
         "seed": seed,
-        "resampling_unit": "verified_group" if groups is not None else "record",
+        "resampling_unit": "verified_group"
+        if groups and any(g is not None for g in groups)
+        else "record",
         "interpretation": "An interval crossing zero is not a significance claim either way.",
     }

@@ -20,6 +20,8 @@ from ci_hgnn_rgd.nlp.intent_config import Stage04Config
 from ci_hgnn_rgd.nlp.intent_data import prepare_intent_data
 from ci_hgnn_rgd.nlp.intent_inference import (
     InferenceInputError,
+    iter_context_predictions,
+    iter_prediction_inputs,
     predict_contexts,
     read_prediction_inputs,
     write_prediction_export,
@@ -254,3 +256,186 @@ def test_prediction_rejects_linear_svm_without_probabilities(tmp_path):
             batch_size=1,
             low_confidence_threshold=0.5,
         )
+
+
+@pytest.mark.parametrize(
+    "bad_row",
+    [
+        [],
+        None,
+        12,
+        {"provenance": 12},
+        {"provenance": ["invalid"]},
+        {"temporal_eligibility": {"evidence": []}},
+    ],
+)
+def test_malformed_modelling_rows_are_excluded_with_reasons(tmp_path, bad_row):
+    config, run = stage03_fixture(tmp_path)
+    if isinstance(bad_row, dict):
+        bad_row = {**source_row("train", "method", "bad", "fixture"), **bad_row}
+    table = run / "citation_contexts.jsonl"
+    with table.open("a", encoding="utf-8") as stream:
+        stream.write(json.dumps(bad_row) + "\n")
+    manifest_path = run / "integration_manifest.json"
+    manifest = json.loads(manifest_path.read_text())
+    manifest["output_checksums"]["citation_contexts.jsonl"] = file_sha256(table)
+    manifest_path.write_text(json.dumps(manifest), encoding="utf-8")
+    prepared = prepare_intent_data(config, tmp_path)
+    assert prepared.dataset_profile["records_excluded_by_stage04"] == 1
+    assert prepared.exclusions[0]["reason"]
+
+
+def test_streaming_inference_is_bounded_and_preserves_global_order():
+    consumed = []
+    observed_batch_sizes = []
+
+    def rows():
+        for index in range(7):
+            consumed.append(index)
+            yield {"text": "" if index % 3 == 0 else "method fixture"}
+
+    class BoundedPredictor(FakeProbabilityPredictor):
+        def predict(self, texts, *, batch_size):
+            assert len(texts) <= batch_size
+            observed_batch_sizes.append(len(texts))
+            return super().predict(texts, batch_size=batch_size)
+
+    output = iter_context_predictions(
+        rows(),
+        BoundedPredictor(),
+        {"model_id": "fixture", "model_version": "v1", "calibration_status": "uncalibrated"},
+        batch_size=2,
+        low_confidence_threshold=0.5,
+    )
+    first = next(output)
+    assert len(consumed) == 2
+    predictions = [first, *output]
+    assert [item.input_order for item in predictions] == list(range(7))
+    assert [item.citation_context_id for item in predictions] == [
+        f"manual-input:{i}" for i in range(7)
+    ]
+    assert observed_batch_sizes and max(observed_batch_sizes) <= 2
+
+
+def test_all_empty_inputs_do_not_call_predictor():
+    class ForbiddenPredictor:
+        def predict(self, *args, **kwargs):
+            pytest.fail("empty inputs must not invoke the model")
+
+    model = {"model_id": "fixture", "model_version": "v1"}
+    outputs = predict_contexts(
+        [{"text": "  "}], ForbiddenPredictor(), model, batch_size=1, low_confidence_threshold=0.5
+    )
+    assert outputs[0].prediction_status == "skipped_empty_text"
+    assert (
+        predict_contexts(
+            [], ForbiddenPredictor(), model, batch_size=1, low_confidence_threshold=0.5
+        )
+        == ()
+    )
+
+
+def test_parquet_streaming_schema_handles_late_nonnull_fields_and_provenance(tmp_path):
+    model = {"model_id": "fixture", "model_version": "v1", "calibration_status": "uncalibrated"}
+    inputs = [
+        {"text": "  ", "source_record_id": None},
+        {
+            "text": "method fixture",
+            "source_record_id": 42,
+            "citing_paper_id": "verified:p1",
+            "provenance": [{"source": "fixture"}],
+        },
+    ]
+    output = tmp_path / "stream.parquet"
+    predictions = iter_context_predictions(
+        inputs, FakeProbabilityPredictor(), model, batch_size=1, low_confidence_threshold=0.5
+    )
+    write_prediction_export(output, predictions, batch_size=1)
+    rows = list(iter_prediction_inputs(output, batch_size=1))
+    assert rows[0]["confidence"] is None
+    assert rows[1]["source_record_id"] == 42
+    assert rows[1]["provenance"] == [{"source": "fixture"}]
+    assert rows[1]["citing_paper_id"] == "verified:p1"
+    from ci_hgnn_rgd.nlp.intent_contracts import CitationIntentEvidence
+
+    assert CitationIntentEvidence.model_validate(rows[1]).source_record_id == 42
+
+
+@pytest.mark.parametrize("suffix", [".jsonl", ".parquet"])
+def test_failed_stream_export_never_publishes_partial_output(tmp_path, suffix):
+    model = {"model_id": "fixture", "model_version": "v1", "calibration_status": "uncalibrated"}
+    prediction = predict_contexts(
+        [{"text": "method fixture"}],
+        FakeProbabilityPredictor(),
+        model,
+        batch_size=1,
+        low_confidence_threshold=0.5,
+    )[0]
+
+    def failing_rows():
+        yield prediction
+        raise RuntimeError("synthetic interrupted stream")
+
+    output = tmp_path / ("predictions" + suffix)
+    with pytest.raises(RuntimeError, match="interrupted"):
+        write_prediction_export(output, failing_rows(), batch_size=1)
+    assert not output.exists()
+    assert not list(tmp_path.iterdir())
+
+
+def test_export_rejects_overwrite_and_empty_parquet_has_contract_schema(tmp_path):
+    import pyarrow.parquet as pq
+
+    output = tmp_path / "empty.parquet"
+    write_prediction_export(output, iter(()))
+    assert "citation_context_id" in pq.read_schema(output).names
+    assert read_prediction_inputs(output) == []
+    with pytest.raises(InferenceInputError, match="already exists"):
+        write_prediction_export(output, [])
+
+
+def test_text_excerpts_are_explicitly_opt_in():
+    model = {"model_id": "fixture", "model_version": "v1", "calibration_status": "uncalibrated"}
+    inputs = [{"citation_context_id": "fixture:context", "text": "method fixture text"}]
+    default = predict_contexts(
+        inputs, FakeProbabilityPredictor(), model, batch_size=1, low_confidence_threshold=0.5
+    )[0]
+    excerpt = predict_contexts(
+        inputs,
+        FakeProbabilityPredictor(),
+        model,
+        batch_size=1,
+        low_confidence_threshold=0.5,
+        include_text_excerpt=True,
+        text_excerpt_characters=6,
+    )[0]
+    assert default.text_excerpt is None
+    assert default.text_reference == "fixture:context"
+    assert excerpt.text_excerpt == "method"
+
+
+def test_reports_export_actual_split_metrics_without_inventing_test_results(tmp_path):
+    from ci_hgnn_rgd.nlp.intent_artifacts import IntentRunPublication
+    from ci_hgnn_rgd.nlp.intent_reporting import generate_run_reports
+
+    config, run = stage03_fixture(tmp_path)
+    prepared = prepare_intent_data(config, tmp_path)
+    publication = IntentRunPublication(config.outputs.model_root, config={}, project_root=tmp_path)
+    publication.write_json(
+        "evaluations/dev/fixture.json",
+        {
+            "model": "fixture",
+            "split": "dev",
+            "metrics": {"macro_f1": 0.25},
+            "evaluated_at": "2026-01-01T00:00:00Z",
+        },
+    )
+    directory = publication.publish({"run_type": "synthetic-test"})
+    generated = generate_run_reports(
+        config.outputs.model_root, directory.name, config.outputs.report_root, prepared
+    )
+    metrics = json.loads(Path(generated["validation_metrics"]).read_text())
+    assert metrics["models"]["fixture"]["metrics"]["macro_f1"] == 0.25
+    assert "test_metrics" not in generated
+    assert not (Path(generated["report_dir"]) / "test_metrics.json").exists()
+    assert (directory / "environment.json").is_file()

@@ -43,6 +43,7 @@ class IntentModelSettings(FrozenModel):
     num_labels: Literal[3] = 3
     max_length: Annotated[StrictInt, Field(ge=16, le=512)] = 256
     trust_remote_code: Literal[False] = False
+    cache_dir: Path = Path("data/interim/citation_intent_models")
 
 
 class IntentTrainingSettings(FrozenModel):
@@ -68,8 +69,15 @@ class IntentTrainingSettings(FrozenModel):
     weighted_sampling: bool = False
     num_workers: Annotated[StrictInt, Field(ge=0, le=8)] = 0
     quick_train_limit: PositiveInt = 768
+    quick_epochs: PositiveInt = 1
     min_available_ram_gib: Annotated[float, Field(ge=0)] = 3.0
+    min_available_commit_gib: Annotated[float, Field(ge=0)] = 0.0
     min_available_gpu_gib: Annotated[float, Field(ge=0)] = 2.0
+    auto_adjust_batch_size: bool = True
+    cpu_train_batch_size_cap: PositiveInt = 2
+    optimizer: Literal["adamw", "adafactor"] = "adamw"
+    gradient_checkpointing: bool = False
+    cpu_threads: PositiveInt | None = None
 
     @model_validator(mode="after")
     def mutually_exclusive_imbalance_controls(self):
@@ -243,6 +251,9 @@ def load_stage04_config(path: Path | None, project_root: Path) -> Stage04Config:
             raise ConfigurationError(f"{config_path}: {rendered}") from None
         raise ConfigurationError(f"{config_path}: {error}") from None
     values = config.model_dump()
+    values["model"]["cache_dir"] = _inside_project(
+        Path(values["model"]["cache_dir"]), root, field="model.cache_dir"
+    )
     for field in ("stage03_output_dir", "stage03_run"):
         value = values["dataset"][field]
         if value is not None:

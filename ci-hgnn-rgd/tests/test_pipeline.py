@@ -12,7 +12,9 @@ def test_future_stage_guards_and_loader_are_explicit():
     assert require_stage(2).implemented
     assert require_stage(3).implemented
     assert require_stage(4).implemented
-    for number in range(5, 13):
+    assert require_stage(5).implemented
+    assert require_stage(6).implemented
+    for number in range(7, 13):
         with pytest.raises(NotImplementedError):
             require_stage(number)
     for number in (0, 13, True):
@@ -51,15 +53,11 @@ def test_all_future_interfaces_fail_instead_of_returning_fake_results():
     from ci_hgnn_rgd.graph.builder import GraphBuilder
     from ci_hgnn_rgd.models.baselines import BaselineRunner
     from ci_hgnn_rgd.models.hetero_gnn import HeteroGNN
-    from ci_hgnn_rgd.nlp.investigation_detection import InvestigationDetector
-    from ci_hgnn_rgd.nlp.topic_discovery import TopicDiscoverer
     from ci_hgnn_rgd.reporting.generator import ReportGenerator
     from ci_hgnn_rgd.scoring.citation_asymmetry import CitationAsymmetryScorer
 
     operations = (
         lambda: EntityResolver().resolve(()),
-        lambda: TopicDiscoverer().fit((), None),
-        lambda: InvestigationDetector().detect((), ()),
         lambda: GraphBuilder().build(None, None, None),
         lambda: HeteroGNN().fit(None, None),
         lambda: BaselineRunner().evaluate(None),

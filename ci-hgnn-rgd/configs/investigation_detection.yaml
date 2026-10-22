@@ -1,0 +1,10 @@
+investigation:
+  guideline_version: stage05-v1
+  min_train_annotations: 30
+  require_independent_annotators: true
+  annotation_sample_size: 100
+  epochs: 3
+  learning_rate: 0.00002
+  class_weighting: inverse
+  batch_size: 4
+  max_length: 256

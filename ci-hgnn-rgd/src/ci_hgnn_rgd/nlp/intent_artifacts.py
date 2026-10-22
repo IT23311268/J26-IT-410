@@ -7,6 +7,7 @@ import os
 import platform
 import subprocess
 import sys
+import time
 from importlib import metadata
 from pathlib import Path
 from uuid import uuid4
@@ -107,6 +108,8 @@ class IntentRunPublication:
             or not self.pending.is_relative_to(self.root)
         ):
             raise IntentArtifactError("run publication must use a new pending directory")
+        environment = environment_snapshot(self.project_root)
+        atomic_json(self.pending / "environment.json", environment)
         manifest = {
             **manifest,
             "run_id": self.run_id,
@@ -116,7 +119,7 @@ class IntentRunPublication:
             "completed_at": now(),
             "config": self.config,
             "config_sha256": fingerprint(self.config),
-            "environment": environment_snapshot(self.project_root),
+            "environment": environment,
         }
         manifest["artifact_checksums"] = {
             str(path.relative_to(self.pending)): file_sha256(path)
@@ -124,7 +127,14 @@ class IntentRunPublication:
             if path.is_file()
         }
         atomic_json(self.pending / "run_manifest.json", manifest)
-        os.rename(self.pending, self.final)
+        for attempt in range(8):
+            try:
+                os.rename(self.pending, self.final)
+                break
+            except PermissionError as error:
+                if getattr(error, "winerror", None) not in {5, 32, 33} or attempt == 7:
+                    raise
+                time.sleep(min(0.05 * 2**attempt, 0.5))
         return self.final
 
     def fail(self, error: Exception) -> None:
@@ -146,6 +156,8 @@ def resolve_intent_run(root: Path, run_id: str) -> Path:
     candidate = (Path(root).resolve() / run_id).resolve()
     if not candidate.is_relative_to(Path(root).resolve()):
         raise IntentArtifactError("run identifier resolves outside the Stage 04 model root")
+    if candidate.name.startswith(".pending-") or (candidate / "failure.json").is_file():
+        raise IntentArtifactError("Stage 04 run is not completely published")
     manifest = candidate / "run_manifest.json"
     if not manifest.is_file():
         raise IntentArtifactError(f"Stage 04 run not found: {run_id}")
