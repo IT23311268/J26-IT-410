@@ -24,6 +24,7 @@ from __future__ import annotations
 import itertools
 
 import re
+from functools import lru_cache
 
 from schema.ingestion_schema_v1 import LayoutRegion, RegionType, SectionType
 
@@ -80,6 +81,39 @@ def strip_numbering(heading_text: str) -> str:
     return NUMBERING_RE.sub("", heading_text).strip()
 
 
+@lru_cache(maxsize=256)
+def _whole_word(keyword: str) -> re.Pattern[str]:
+    """`keyword`, matched as a whole word, plural allowed.
+
+    A plain `startswith` is not enough. "Abstractive Question
+    Answering" begins with the letters of "abstract", and that single
+    heading put pages 4 to 8 of the RAG paper — its results, its
+    figures and their captions — under ABSTRACT, a section one
+    paragraph long. Thirty-seven regions.
+
+    But the keywords above are singular stems on purpose, because
+    papers write "Methods", "Results", "Experiments" and "References".
+    So a trailing "s" or "es" still counts, and anything else does
+    not: "method" matches "Methods" and "abstract" does not match
+    "Abstractive".
+    """
+    return re.compile(rf"{re.escape(keyword)}(?:e?s)?\b")
+
+
+def _opens_with(text: str, keyword: str) -> bool:
+    """Does `text` begin with `keyword`, as a whole word?"""
+    return _whole_word(keyword).match(text) is not None
+
+
+def _mentions(text: str, keyword: str) -> bool:
+    """Is `keyword` anywhere in `text`, as a whole word?
+
+    The combined-heading branch has the same trap: "Abstractive and
+    Extractive QA" must not match on "abstract".
+    """
+    return _whole_word(keyword).search(text) is not None
+
+
 def classify_section(heading_text: str) -> SectionType:
     """Work out which section a heading opens.
 
@@ -109,12 +143,12 @@ def classify_section(heading_text: str) -> SectionType:
 
     if COMBINED_RE.search(text):
         for section, keywords in SECTION_KEYWORDS:
-            if any(keyword in text for keyword in keywords):
+            if any(_mentions(text, keyword) for keyword in keywords):
                 return section
         return SectionType.UNKNOWN
 
     for section, keywords in SECTION_KEYWORDS:
-        if any(text.startswith(keyword) for keyword in keywords):
+        if any(_opens_with(text, keyword) for keyword in keywords):
             return section
 
     return SectionType.UNKNOWN

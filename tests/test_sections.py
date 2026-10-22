@@ -448,3 +448,29 @@ def test_a_front_matter_with_neither_heading_nor_capitals_gives_nothing():
                     kind=RegionType.BODY),
     ]
     assert paper_title(regions) == ""
+
+
+def test_a_keyword_must_be_a_whole_word():
+    """"Abstractive Question Answering" begins with the letters of
+    "abstract". Matching on the prefix put pages 4 to 8 of the RAG
+    paper — its results, figures and captions — under ABSTRACT, a
+    section one paragraph long."""
+    assert classify_section("3.2 Abstractive Question Answering") is not SectionType.ABSTRACT
+    assert classify_section("Abstract") is SectionType.ABSTRACT
+    assert classify_section("Abstract:") is SectionType.ABSTRACT
+    # the combined-heading branch has the same trap
+    assert classify_section("Abstractive and Extractive QA") is not SectionType.ABSTRACT
+
+
+def test_the_ordinary_headings_still_classify():
+    """The boundary rule must not cost the normal cases."""
+    for text, want in [
+        ("1 Introduction", SectionType.INTRODUCTION),
+        ("2 Methods", SectionType.METHOD),
+        ("3 Experiments", SectionType.RESULTS),
+        ("5 Related Work", SectionType.RELATED_WORK),
+        ("6 Discussion", SectionType.DISCUSSION),
+        ("References", SectionType.REFERENCES),
+        ("Our Approach", SectionType.METHOD),
+    ]:
+        assert classify_section(text) is want, text
